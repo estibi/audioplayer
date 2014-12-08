@@ -12,6 +12,7 @@
 #include <pthread.h>
 
 #include "audio_engine.h"
+#include "logger.h"
 
 #define	AUDIO_FILE "test.wav"
 
@@ -50,6 +51,7 @@ int signal_cond_event();
 void
 engine_daemon()
 {
+	logger("engine_daemon()\n");
 	ao_initialize();
 	default_driver = ao_default_driver_id();
 	socket_daemon();
@@ -71,25 +73,25 @@ show_sf_info(SF_INFO * sfinfo)
 void
 cancel_routine(void *arg)
 {
-	printf("CLEANING UP: ao_close()\n");
+	logger("CLEANING UP: ao_close()\n");
 	ao_close(device);
 
-	printf("CLEANING UP: sf_close()\n");
+	logger("CLEANING UP: sf_close()\n");
 	sf_close(sndfile);
 
-	printf("CLEANING UP: free()\n");
+	logger("CLEANING UP: free()\n");
 	free(buffer);
 
-	printf("CLEANING UP: mutex()\n");
+	logger("CLEANING UP: mutex()\n");
 	pthread_mutex_unlock(&audio_cmd_mutex);
 
-	printf("CLEANING UP - DONE\n");
+	logger("CLEANING UP - DONE\n");
 }
 
 void
 exit_sndfile()
 {
-	printf("CLEANING UP: sf_close()\n");
+	logger("CLEANING UP: sf_close()\n");
 	sf_close(sndfile);
 }
 
@@ -125,7 +127,7 @@ ao_play_file()
 	seek_frames = buf_len * 4;
 	buf_size = buf_len * sizeof (int);
 	play_chunk = buf_size / 16;
-	printf("play_chunk: %d\n", play_chunk);
+	logger("play_chunk: %d\n", play_chunk);
 	buffer = malloc(buf_size);
 	if (buffer == NULL) {
 		printf("buffer error: %s\n", strerror(errno));
@@ -142,8 +144,8 @@ ao_play_file()
 	// reading a file
 	for (;;) {
 		count = sf_read_int(sndfile, buffer, buf_len);
-		printf("counter: %d\n", (int)count);
-		printf("read_cnt: %d\n", read_cnt);
+		logger("counter: %d\n", (int)count);
+		logger("read_cnt: %d\n", read_cnt);
 		if ((int)count == 0) {
 			// end of file
 			pthread_mutex_lock(&audio_cmd_mutex);
@@ -158,29 +160,29 @@ ao_play_file()
 			pthread_mutex_lock(&audio_cmd_mutex);
 			switch (audio_cmd) {
 			case CMD_STOP:
-				printf("CMD_STOP\n");
+				logger("CMD_STOP\n");
 				pthread_exit(NULL);
 			case CMD_PAUSE:
-				printf("CMD_PAUSE\n");
+				logger("CMD_PAUSE\n");
 				paused = true;
 				break;
 			case CMD_FF:
-				printf("CMD_FF\n");
+				logger("CMD_FF\n");
 				seek_ret = sf_seek(sndfile, seek_frames, SEEK_CUR);
-				printf("seek_ret: %lld\n", seek_ret);
+				logger("seek_ret: %lld\n", seek_ret);
 				if (seek_ret == -1)
 					sf_seek(sndfile, 0, SEEK_END);
 				shifted = true;
 				audio_cmd = CMD_PLAY;
 				break;
 			case CMD_REV:
-				printf("CMD_REV\n");
+				logger("CMD_REV\n");
 				seek_ret = sf_seek(sndfile, 0, SEEK_CUR);
 				if (seek_ret <= seek_frames)
 					seek_ret = sf_seek(sndfile, 0, SEEK_SET);
 				else
 					seek_ret = sf_seek(sndfile, -seek_frames, SEEK_CUR);
-				printf("seek_ret: %lld\n", seek_ret);
+				logger("seek_ret: %lld\n", seek_ret);
 				audio_cmd = CMD_PLAY;
 				shifted = true;
 				break;
@@ -208,7 +210,7 @@ ao_play_file()
 			// check if STOP command was sent
 			pthread_mutex_lock(&audio_cmd_mutex);
 			if (audio_cmd == CMD_STOP) {
-				printf("CMD_STOP\n");
+				logger("CMD_STOP\n");
 				pthread_exit(NULL);
 			}
 			pthread_mutex_unlock(&audio_cmd_mutex);
@@ -240,65 +242,65 @@ play_file()
 	pthread_mutex_unlock(&audio_cmd_mutex);
 
 	if (pthread_create(&ao_thread, aot_attr, ao_play_file, ao_arg) != 0) {
-		printf("pthread_create error\n");
+		logger("pthread_create error\n");
 	}
 }
 
 void
 quit_command()
 {
-	printf("QUIT COMMAND: start\n");
+	logger("QUIT COMMAND: start\n");
 
 	pthread_mutex_lock(&audio_cmd_mutex);
 	audio_cmd = CMD_STOP;
 	pthread_mutex_unlock(&audio_cmd_mutex);
 
 	if (signal_cond_event() != 0) {
-		printf("QUIT COMMAND FAILED\n");
+		logger("QUIT COMMAND FAILED\n");
 	}
 
-	printf("QUIT COMMAND: done\n");
+	logger("QUIT COMMAND: done\n");
 }
 
 void
 ff_command()
 {
-	printf("FF COMMAND: start\n");
+	logger("FF COMMAND: start\n");
 
 	pthread_mutex_lock(&audio_cmd_mutex);
 	audio_cmd = CMD_FF;
 	pthread_mutex_unlock(&audio_cmd_mutex);
 
 	if (signal_cond_event() != 0) {
-		printf("FF COMMAND FAILED\n");
+		logger("FF COMMAND FAILED\n");
 	}
 
-	printf("FF COMMAND: done\n");
+	logger("FF COMMAND: done\n");
 }
 
 void
 rev_command()
 {
-	printf("REV COMMAND: start\n");
+	logger("REV COMMAND: start\n");
 
 	pthread_mutex_lock(&audio_cmd_mutex);
 	audio_cmd = CMD_REV;
 	pthread_mutex_unlock(&audio_cmd_mutex);
 
 	if (signal_cond_event() != 0) {
-		printf("REV COMMAND FAILED\n");
+		logger("REV COMMAND FAILED\n");
 	}
 
-	printf("REV COMMAND: done\n");
+	logger("REV COMMAND: done\n");
 }
 
 int
 signal_cond_event()
 {
 	pthread_mutex_lock(&ao_event_mutex);
-	printf("@@@ pthread_cond_signal, starting..\n");
+	logger("@@@ pthread_cond_signal, starting..\n");
 	int ret = pthread_cond_signal(&ao_event);
-	printf("@@@ pthread_cond_signal: %d\n", ret);
+	logger("@@@ pthread_cond_signal: %d\n", ret);
 	pthread_mutex_unlock(&ao_event_mutex);
 	return (0);
 }
@@ -307,7 +309,7 @@ signal_cond_event()
 void
 pause_command()
 {
-	printf("PAUSE COMMAND: start\n");
+	logger("PAUSE COMMAND: start\n");
 
 	pthread_mutex_lock(&audio_cmd_mutex);
 	if (audio_cmd == CMD_PLAY) {
@@ -315,14 +317,14 @@ pause_command()
 	} else if (audio_cmd == CMD_PAUSE) {
 		audio_cmd = CMD_PLAY;
 		pthread_mutex_lock(&ao_event_mutex);
-		printf("@@@ pthread_cond_signal, starting..\n");
+		logger("@@@ pthread_cond_signal, starting..\n");
 		int ret = pthread_cond_signal(&ao_event);
-		printf("@@@ pthread_cond_signal: %d\n", ret);
+		logger("@@@ pthread_cond_signal: %d\n", ret);
 		pthread_mutex_unlock(&ao_event_mutex);
 	}
 	pthread_mutex_unlock(&audio_cmd_mutex);
 
-	printf("PAUSE COMMAND: done\n");
+	logger("PAUSE COMMAND: done\n");
 }
 
 void
@@ -338,40 +340,40 @@ socket_daemon()
 	addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 	addr.sin_port = htons(10000);
 
-	printf("socket()\n");
+	logger("socket()\n");
 	sock_fd = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);
 	// printf("sock_fd: %d\n", sock_fd);
 	if (!sock_fd) {
 		printf("socket error: %s\n", strerror(errno));
 	}
 
-	printf("bind()\n");
+	logger("bind()\n");
 	err = bind(sock_fd, (struct sockaddr *)&addr, sizeof (addr));
 	// printf("err: %d\n", err);
 	if (err) {
 		printf("bind error: %s\n", strerror(errno));
 	}
 
-	printf("listen()\n");
+	logger("listen()\n");
 	err = listen(sock_fd, in_queue);
 	if (err) {
 		printf("listen error: %s\n", strerror(errno));
 	}
 
-	printf("initial cmd: %d\n", cmd);
+	logger("initial cmd: %d\n", cmd);
 
-	printf("waiting for new connection..\n");
+	logger("waiting for new connection..\n");
 	conn_fd = accept(sock_fd, NULL, NULL);
 	if (conn_fd == -1) {
 		printf("accept error: %s\n", strerror(errno));
 		close(conn_fd);
 		return;
 	}
-	printf("new connection\n");
-	printf("conn_fd: %d\n", conn_fd);
+	logger("new connection\n");
+	logger("conn_fd: %d\n", conn_fd);
 
 	for (;;) {
-		printf("reading..\n");
+		logger("reading..\n");
 		len = read(conn_fd, &cmd, sizeof (cmd));
 
 		if (len == 0) {
@@ -385,37 +387,37 @@ socket_daemon()
 		if (len != sizeof (cmd)) {
 			printf("ERROR\n");
 		} else {
-			printf("received: %d\n", cmd);
+			logger("received: %d\n", cmd);
 		}
 
-		printf("cmd: %d\n", cmd);
+		logger("cmd: %d\n", cmd);
 		switch (cmd) {
 		case CMD_PLAY:
-			printf("daemon received CMD_PLAY\n");
+			logger("daemon received CMD_PLAY\n");
 			play_file();
 			break;
 		case CMD_PAUSE:
-			printf("daemon received CMD_PAUSE\n");
+			logger("daemon received CMD_PAUSE\n");
 			pause_command();
 			break;
 		case CMD_STOP:
-			printf("daemon received CMD_STOP\n");
+			logger("daemon received CMD_STOP\n");
 			// TODO ?
 			quit_command();
 			break;
 		case CMD_FF:
-			printf("daemon received CMD_FF\n");
+			logger("daemon received CMD_FF\n");
 			ff_command();
 			break;
 		case CMD_REV:
-			printf("daemon received CMD_REV\n");
+			logger("daemon received CMD_REV\n");
 			rev_command();
 			break;
 		default:
 			;;
 		}
 	}
-	printf("close connection\n");
+	logger("close connection\n");
 	close(conn_fd);
 
 	// printf("waiting for a thread..\n");

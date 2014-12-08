@@ -1,0 +1,2 @@
+
+void logger(char *fmt, ...);
