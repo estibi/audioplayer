@@ -73,16 +73,56 @@ show_dir_content(dir_contents *contents)
 
 
 int
-send_command(int sock_fd, cmd_t cmd)
+send_command(int sock_fd, cmd_t cmd, char *s)
 {
 	int len;
-	len = write(sock_fd, &cmd, sizeof (cmd));
-	if (len != sizeof (cmd)) {
-		printf("write error: %s\n", strerror(errno));
-		printf("len: %d\n", len);
-		printf("sizeof(cmd): %d\n", (unsigned int)sizeof (cmd));
+	unsigned int str_size, buf_size;
+	const int MAX_STRING = 256;
+	char *p, *raw_buf;
+
+	struct cmd_pkt_header pkt_hdr;
+
+	pkt_hdr.cmd = htonl(cmd);
+
+	if (s) {
+		str_size = strnlen(s, MAX_STRING);
+		pkt_hdr.size = htonl(str_size + 1);
+		buf_size = sizeof (pkt_hdr) + str_size + 1;
+	} else {
+		str_size = 0;
+		pkt_hdr.size = htonl(0);
+		buf_size = sizeof (pkt_hdr);
+	}
+	// printf("DEBUG: sender buf_size: %d\n", buf_size);
+	raw_buf = malloc(buf_size);
+	if (!raw_buf) {
+		printf("malloc error: %s\n", strerror(errno));
 		return (-1);
 	}
+
+	// copy packet header
+	p = raw_buf;
+	memcpy(p, &pkt_hdr, sizeof (pkt_hdr));
+
+	if (s) {
+		// copy command string
+		p += sizeof (pkt_hdr);
+		memcpy(p, s, str_size);
+
+		// terminate string with 0
+		p += str_size;
+		memset(p, '\0', 1);
+	}
+
+	len = write(sock_fd, raw_buf, buf_size);
+	if (len != buf_size) {
+		printf("write error: %s\n", strerror(errno));
+		printf("len: %d\n", len);
+		printf("buf_size: %d\n", (unsigned int) buf_size);
+		free(raw_buf);
+		return (-1);
+	}
+	free(raw_buf);
 	return (0);
 }
 
@@ -91,42 +131,42 @@ int
 send_play_command(int sock_fd)
 {
 	cmd_t cmd = CMD_PLAY;
-	return (send_command(sock_fd, cmd));
+	return (send_command(sock_fd, cmd, "this_is_not_used.wav"));
 }
 
 int
 send_pause_command(int sock_fd)
 {
 	cmd_t cmd = CMD_PAUSE;
-	return (send_command(sock_fd, cmd));
+	return (send_command(sock_fd, cmd, NULL));
 }
 
 int
 send_quit_command(int sock_fd)
 {
 	cmd_t cmd = CMD_QUIT;
-	return (send_command(sock_fd, cmd));
+	return (send_command(sock_fd, cmd, NULL));
 }
 
 int
 send_stop_command(int sock_fd)
 {
 	cmd_t cmd = CMD_STOP;
-	return (send_command(sock_fd, cmd));
+	return (send_command(sock_fd, cmd, NULL));
 }
 
 int
 send_ff_command(int sock_fd)
 {
 	cmd_t cmd = CMD_FF;
-	return (send_command(sock_fd, cmd));
+	return (send_command(sock_fd, cmd, NULL));
 }
 
 int
 send_rev_command(int sock_fd)
 {
 	cmd_t cmd = CMD_REV;
-	return (send_command(sock_fd, cmd));
+	return (send_command(sock_fd, cmd, NULL));
 }
 
 
