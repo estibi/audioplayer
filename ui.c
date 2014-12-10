@@ -9,6 +9,8 @@
 
 #include "audio_engine.h"
 
+int sock_fd;
+
 int
 send_command(int sock_fd, cmd_t cmd, char *s)
 {
@@ -140,32 +142,30 @@ get_client_socket()
 	addr.sin_port = htons(10000);
 
 	sock_fd = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);
-	// printf("sock_fd: %d\n", sock_fd);
 	if (!sock_fd) {
-		printf("socket error: %s\n", strerror(errno));
+		printw("ui socket error: %s\n", strerror(errno));
+		refresh();
 	}
 
-	// TODO:
-	sleep(2);
+	// FIXME: waiting for a server (audio daemon)
+	sleep(1);
 
-	err = connect(sock_fd, (struct sockaddr *)&addr, sizeof (addr));
-	if (err != 0) {
-		printf("connect error: %s\n", strerror(errno));
-		return (-1);
+	for (;;) {
+		err = connect(sock_fd, (struct sockaddr *)&addr, sizeof (addr));
+		if (err == 0) {
+			return (sock_fd);
+		}
+
+		printw("ui connect error: %s\n", strerror(errno));
+		refresh();
+		sleep(1);
 	}
-	return (sock_fd);
 }
 
 void
 curses_loop()
 {
 	int key;
-	WINDOW *main_win;
-	int sock_fd;
-
-	sock_fd = get_client_socket();
-
-	main_win = prepare_window();
 
 	for (;;) {
 		mvprintw(0, 0, "press p to play, s to stop, q to quit..");
@@ -204,9 +204,13 @@ curses_loop()
 void
 init_curses_ui()
 {
+	WINDOW *main_win;
+
 	initscr();
 	noecho();
-	curses_loop();
+	main_win = prepare_window();
+	sock_fd = get_client_socket();
 
+	curses_loop();
 	endwin();
 }

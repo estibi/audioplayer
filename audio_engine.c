@@ -347,6 +347,9 @@ pause_command()
 	pthread_mutex_unlock(&audio_cmd_mutex);
 }
 
+/*
+ * Receives commands from ui using socket connection.
+ */
 void
 socket_daemon()
 {
