@@ -14,8 +14,6 @@
 #include "audio_engine.h"
 #include "logger.h"
 
-#define	AUDIO_FILE "test.wav"
-
 /*
  * API:
  * http://www.mega-nerd.com/libsndfile/api.html
@@ -24,10 +22,12 @@
  */
 
 // libsndfile handler
-SNDFILE * sndfile;
+SNDFILE *sndfile;
+SF_INFO sfinfo;
+int mode = SFM_READ;
 
 // libao settings
-ao_device *device;
+static ao_device *device;
 ao_sample_format format;
 int default_driver;
 
@@ -96,13 +96,47 @@ exit_sndfile()
 	sf_close(sndfile);
 }
 
+void
+set_audio_format()
+{
+	memset(&format, 0, sizeof (format));
+	format.channels = sfinfo.channels;
+	format.rate = sfinfo.samplerate;
+	format.byte_format = AO_FMT_NATIVE;
+	format.bits = 32;	// 32 for sf_read_int(), 16 for sf_read_short()
+}
+
+int
+open_file_sf(char *str_buf)
+{
+	sndfile = sf_open(str_buf, mode, &sfinfo);
+	if (sndfile == NULL) {
+		logger("sf_open error: %s\n", strerror(errno));
+		return (-1);
+	}
+	return (0);
+}
+
+int
+open_audio_device()
+{
+	// libao
+	device = ao_open_live(default_driver, &format, NULL);
+	if (device == NULL) {
+		logger("ao_open_live() error: %s\n", strerror(errno));
+		return (-1);
+	}
+	return (0);
+}
+
+/*
+ * This is an audio I/O thread.
+ */
 void *
 ao_play_file()
 {
 	int buf_len, buf_size;
 	static bool paused = false, shifted = false;
-	SF_INFO sfinfo;
-	int mode = SFM_READ;
 	sfinfo.format = 0;
 	int read_cnt = 0;
 	int i, play_chunk;
@@ -110,18 +144,6 @@ ao_play_file()
 	sf_count_t count, seek_ret, seek_frames;
 
 	pthread_cleanup_push(cancel_routine, NULL);
-
-	sndfile = sf_open(AUDIO_FILE, mode, &sfinfo);
-	if (sndfile == NULL) {
-		logger("sf_open error: %s\n", strerror(errno));
-		pthread_exit(NULL);
-	}
-
-	memset(&format, 0, sizeof (format));
-	format.channels = sfinfo.channels;
-	format.rate = sfinfo.samplerate;
-	format.byte_format = AO_FMT_NATIVE;
-	format.bits = 32;	// 32 for sf_read_int(), 16 for sf_read_short()
 
 	// buf_len = format.bits/8 * format.channels * format.rate / 4;
 	buf_len = format.bits/8 * format.channels * format.rate;
@@ -132,13 +154,6 @@ ao_play_file()
 	buffer = malloc(buf_size);
 	if (buffer == NULL) {
 		logger("buffer error: %s\n", strerror(errno));
-		pthread_exit(NULL);
-	}
-
-	// libao
-	device = ao_open_live(default_driver, &format, NULL);
-	if (device == NULL) {
-		logger("ao_open_live() error: %s\n", strerror(errno));
 		pthread_exit(NULL);
 	}
 
@@ -192,6 +207,7 @@ ao_play_file()
 			}
 			pthread_mutex_unlock(&audio_cmd_mutex);
 
+			// CMD_FF, CMD_REV
 			if (shifted) {
 				shifted = false;
 				break;
@@ -216,6 +232,7 @@ ao_play_file()
 			}
 			pthread_mutex_unlock(&audio_cmd_mutex);
 
+			// play sound
 			ao_play(device, bufp, play_chunk);
 			bufp += play_chunk;
 		}
@@ -227,7 +244,7 @@ ao_play_file()
 }
 
 void
-play_file()
+play_file(char *str_buf)
 {
 	// quit current thread if alive
 	if (pthread_kill(ao_thread, 0) == 0) {
@@ -241,6 +258,19 @@ play_file()
 	pthread_mutex_lock(&audio_cmd_mutex);
 	audio_cmd = CMD_PLAY;
 	pthread_mutex_unlock(&audio_cmd_mutex);
+
+	if (open_file_sf(str_buf) == -1) {
+		logger("ERROR: can't open audio file %s\n", str_buf);
+		return;
+	}
+
+	set_audio_format();
+
+	if (open_audio_device() == -1) {
+		logger("ERROR: can't open audio device\n");
+		sf_close(sndfile);
+		return;
+	}
 
 	if (pthread_create(&ao_thread, aot_attr, ao_play_file, ao_arg) != 0) {
 		logger("pthread_create error\n");
@@ -410,7 +440,7 @@ socket_daemon()
 		switch (host_pkt_hdr.cmd) {
 		case CMD_PLAY:
 			logger("socket_daemon received CMD_PLAY\n");
-			play_file();
+			play_file(str_buf);
 			break;
 		case CMD_PAUSE:
 			logger("socket_daemon received CMD_PAUSE\n");

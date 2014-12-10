@@ -1,18 +1,11 @@
 #include <errno.h>
+#include <ncurses.h>
+#include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <dirent.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <limits.h>
-
-#include <ncurses.h>
-#include <signal.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
+#include <unistd.h>
 
 #include "audio_engine.h"
 
@@ -75,7 +68,7 @@ int
 send_play_command(int sock_fd)
 {
 	cmd_t cmd = CMD_PLAY;
-	return (send_command(sock_fd, cmd, "this_is_not_used.wav"));
+	return (send_command(sock_fd, cmd, "test.wav"));
 }
 
 int
