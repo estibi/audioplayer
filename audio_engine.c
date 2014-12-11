@@ -397,7 +397,7 @@ socket_daemon()
 {
 	int sock_fd, conn_fd, len;
 	char *str_buf;
-	bool has_content;
+	bool has_content = false;
 
 	struct cmd_pkt_header pkt_hdr, host_pkt_hdr;
 	host_pkt_hdr.cmd = CMD_UNKNOWN;
@@ -501,6 +501,10 @@ socket_daemon()
 	}
 	// we are here if error occurred
 	stop_command();
+	if (has_content) {
+		free(str_buf);
+		has_content = false;
+	}
 	close(conn_fd);
 	close(sock_fd);
 	if (pthread_kill(ao_thread, 0) == 0) {
