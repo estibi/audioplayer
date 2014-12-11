@@ -11,7 +11,7 @@
 #include "utils.h"
 
 int sock_fd;
-WINDOW *main_win;
+WINDOW *main_win, *status_win;
 
 int
 send_command(int sock_fd, cmd_t cmd, char *s)
@@ -110,15 +110,39 @@ send_rev_command(int sock_fd)
 	return (send_command(sock_fd, cmd, NULL));
 }
 
-
 WINDOW*
-prepare_window()
+prepare_main_window()
 {
 	// int w_height = 20, w_width = 80, w_starty = 0, w_startx = 0;
 	int w_height, w_width, w_starty = 0, w_startx = 0;
 
 	getmaxyx(stdscr, w_height, w_width);
-	WINDOW * win = newwin(w_height, w_width, w_starty, w_startx);
+	WINDOW *win = newwin(w_height, w_width - 20, w_starty, w_startx);
+
+	init_pair(1, COLOR_RED, COLOR_GREEN);
+	attron(COLOR_PAIR(1));
+
+	wbkgd(win, COLOR_PAIR(1));
+	box(win, 0, 0);
+	attroff(COLOR_PAIR(1));
+	return (win);
+}
+
+WINDOW*
+prepare_status_window()
+{
+	// screen size
+	int scr_height, scr_width;
+	// window size
+	int w_height, w_width, w_starty, w_startx;
+
+	getmaxyx(stdscr, scr_height, scr_width);
+
+	w_height = 20;
+	w_width = 20;
+	w_starty = 0;
+	w_startx = scr_width - w_width;
+	WINDOW *win = newwin(w_height, w_width, w_starty, w_startx);
 
 	init_pair(1, COLOR_RED, COLOR_GREEN);
 	attron(COLOR_PAIR(1));
@@ -176,28 +200,35 @@ curses_loop()
 		case KEY_UP:
 			break;
 		case 'p':
+			mvwprintw(status_win, 1, 5, "CMD: PLAY ");
 			send_play_command(sock_fd);
 			break;
 		case ' ':
+			mvwprintw(status_win, 1, 5, "CMD: PAUSE");
 			send_pause_command(sock_fd);
 			break;
 		case 'q':
+			mvwprintw(status_win, 1, 5, "CMD: QUIT ");
 			send_quit_command(sock_fd);
 			return;
 		case 's':
+			mvwprintw(status_win, 1, 5, "CMD: STOP ");
 			send_stop_command(sock_fd);
 			break;
 		case 68:
+			mvwprintw(status_win, 1, 5, "CMD: REV  ");
 			send_rev_command(sock_fd);
 			break;
 		case 67:
+			mvwprintw(status_win, 1, 5, "CMD: FF   ");
 			send_ff_command(sock_fd);
 			break;
 		default:
-			mvwprintw(main_win, 24, 0, "pressed = %3d as '%c'", key, key);
-			wrefresh(main_win);
+			mvwprintw(status_win, 10, 1, "pressed:");
+			mvwprintw(status_win, 11, 1, "%3d as '%c'", key, key);
 			break;
 		}
+		wrefresh(status_win);
 	}
 }
 
@@ -227,7 +258,8 @@ init_curses_ui()
 {
 	initscr();
 	noecho();
-	main_win = prepare_window();
+	main_win = prepare_main_window();
+	status_win = prepare_status_window();
 
 	show_files(main_win);
 
