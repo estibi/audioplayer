@@ -1,6 +1,8 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -19,25 +21,30 @@ init_audio_engine()
 	}
 	if (pid > 0) {
 		// parent process
+		printf("audio engine pid: %d\n", pid);
 		return (pid);
 	}
 
 	// we are a child process
-	printf("child pid: %d\n", pid);
 	engine_daemon();
-	return (0);
+	exit(0);
 }
 
 int
 main(int argc, char **argv)
 {
-	int daemon_pid;
+	int daemon_pid, status, err;
 	daemon_pid = init_audio_engine();
 
-	init_curses_ui();
+	curses_ui();
 
-	// TODO: wait for audio engine
-	sleep(1);
+	// wait for audio engine
+	err = wait(&status);
+	if (err == -1) {
+		printf("wait error:\n");
+		printf("%s\n", strerror(errno));
+		printf("wait status: %d\n", status);
+	}
 
 	return (0);
 }

@@ -1,2 +1,2 @@
 
-void init_curses_ui();
+void curses_ui();

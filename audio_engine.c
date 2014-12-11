@@ -44,6 +44,7 @@ pthread_cond_t ao_event = PTHREAD_COND_INITIALIZER;
 
 int *buffer;
 
+void stop_command();
 void quit_command();
 void socket_daemon();
 int signal_cond_event();
@@ -248,13 +249,13 @@ play_file(char *str_buf)
 {
 	// quit current thread if alive
 	if (pthread_kill(ao_thread, 0) == 0) {
-		quit_command();
+		stop_command();
 	}
 
 	// wait for current thread to exit
 	pthread_join(ao_thread, NULL);
 
-	// reset 'exit' command
+	// reset 'stop' command
 	pthread_mutex_lock(&audio_cmd_mutex);
 	audio_cmd = CMD_PLAY;
 	pthread_mutex_unlock(&audio_cmd_mutex);
@@ -278,7 +279,7 @@ play_file(char *str_buf)
 }
 
 void
-quit_command()
+stop_command()
 {
 	pthread_mutex_lock(&audio_cmd_mutex);
 	audio_cmd = CMD_STOP;
@@ -451,9 +452,18 @@ socket_daemon()
 			break;
 		case CMD_STOP:
 			logger("socket_daemon received CMD_STOP\n");
-			// TODO ?
-			quit_command();
+			stop_command();
 			break;
+		case CMD_QUIT:
+			logger("socket_daemon received CMD_QUIT\n");
+			stop_command();
+			logger("socket_daemon - closing socket\n");
+			close(conn_fd);
+			if (pthread_kill(ao_thread, 0) == 0) {
+				logger("waiting for audio thread..\n");
+				pthread_join(ao_thread, NULL);
+			}
+			return;
 		case CMD_FF:
 			logger("socket_daemon received CMD_FF\n");
 			ff_command();

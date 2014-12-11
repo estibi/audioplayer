@@ -113,7 +113,6 @@ send_rev_command(int sock_fd)
 WINDOW*
 prepare_main_window()
 {
-	// int w_height = 20, w_width = 80, w_starty = 0, w_startx = 0;
 	int w_height, w_width, w_starty = 0, w_startx = 0;
 
 	getmaxyx(stdscr, w_height, w_width);
@@ -125,6 +124,7 @@ prepare_main_window()
 	wbkgd(win, COLOR_PAIR(1));
 	box(win, 0, 0);
 	attroff(COLOR_PAIR(1));
+	wrefresh(win);
 	return (win);
 }
 
@@ -150,6 +150,7 @@ prepare_status_window()
 	wbkgd(win, COLOR_PAIR(1));
 	box(win, 0, 0);
 	attroff(COLOR_PAIR(1));
+	wrefresh(win);
 	return (win);
 }
 
@@ -210,6 +211,7 @@ curses_loop()
 		case 'q':
 			mvwprintw(status_win, 1, 5, "CMD: QUIT ");
 			send_quit_command(sock_fd);
+			wrefresh(status_win);
 			return;
 		case 's':
 			mvwprintw(status_win, 1, 5, "CMD: STOP ");
@@ -254,19 +256,33 @@ show_files(WINDOW *w)
 }
 
 void
-init_curses_ui()
+ui_cleanup()
+{
+	close(sock_fd);
+
+	delwin(main_win);
+	delwin(status_win);
+	endwin();
+}
+
+void
+ui_init()
 {
 	initscr();
 	noecho();
 	main_win = prepare_main_window();
 	status_win = prepare_status_window();
+}
+
+
+void
+curses_ui()
+{
+	ui_init();
 
 	show_files(main_win);
-
 	sock_fd = get_client_socket();
-
 	curses_loop();
-	wrefresh(main_win);
 
-	endwin();
+	ui_cleanup();
 }
