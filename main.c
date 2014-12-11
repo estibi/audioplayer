@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "audio_engine.h"
@@ -36,6 +37,7 @@ main(int argc, char **argv)
 	init_curses_ui();
 
 	// TODO: wait for audio engine
+	sleep(1);
 
 	return (0);
 }

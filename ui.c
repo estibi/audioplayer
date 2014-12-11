@@ -8,8 +8,10 @@
 #include <unistd.h>
 
 #include "audio_engine.h"
+#include "utils.h"
 
 int sock_fd;
+WINDOW *main_win;
 
 int
 send_command(int sock_fd, cmd_t cmd, char *s)
@@ -123,9 +125,6 @@ prepare_window()
 
 	wbkgd(win, COLOR_PAIR(1));
 	box(win, 0, 0);
-	mvwprintw(win, 1, 1, "testing win..");
-	refresh();
-	wrefresh(win);
 	attroff(COLOR_PAIR(1));
 	return (win);
 }
@@ -166,12 +165,13 @@ void
 curses_loop()
 {
 	int key;
+	notimeout(main_win, true);
 
 	for (;;) {
-		mvprintw(0, 0, "press p to play, s to stop, q to quit..");
-		refresh();
+		mvwprintw(main_win, 0, 1, "press p to play, s to stop, q to quit..");
+		wrefresh(main_win);
 
-		key = getch();
+		key = wgetch(main_win);
 		switch (key) {
 		case KEY_UP:
 			break;
@@ -194,23 +194,47 @@ curses_loop()
 			send_ff_command(sock_fd);
 			break;
 		default:
-			mvprintw(24, 0, "pressed = %3d as '%c'", key, key);
+			mvwprintw(main_win, 24, 0, "pressed = %3d as '%c'", key, key);
+			wrefresh(main_win);
 			break;
 		}
-		timeout(5000);
 	}
+}
+
+void
+show_files(WINDOW *w)
+{
+	int index, err;
+	struct dir_contents contents;
+	char *dir_path = ".";
+	err = scan_dir(dir_path, &contents);
+	if (err == -1) {
+		mvwprintw(w, 1, 1, "ERROR - CAN'T LOAD FILES");
+		wrefresh(w);
+		return;
+	}
+
+	mvwprintw(w, 1, 1, "FILES:");
+	mvwprintw(w, 2, 1, "/..");
+	for (index = 0; index < contents.amount; index++) {
+		mvwprintw(w, index + 3, 1, "%s", &contents.list[index]);
+	}
+	wrefresh(w);
 }
 
 void
 init_curses_ui()
 {
-	WINDOW *main_win;
-
 	initscr();
 	noecho();
 	main_win = prepare_window();
+
+	show_files(main_win);
+
 	sock_fd = get_client_socket();
 
 	curses_loop();
+	wrefresh(main_win);
+
 	endwin();
 }

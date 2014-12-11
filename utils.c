@@ -5,21 +5,10 @@
 #include <dirent.h>
 #include <unistd.h>
 
-#define	FILES_IN_DIR_LIMIT 20000
-#define	NAME_MAX 255
+#include "utils.h"
 
-typedef struct filename_t {
-	char name[NAME_MAX];
-} filename;
-
-typedef struct dir_contents_t {
-	filename list[FILES_IN_DIR_LIMIT];
-	unsigned int amount;
-} dir_contents;
-
-
-static void
-scan_dir(char *dir_path, dir_contents *contents)
+int
+scan_dir(char *dir_path, struct dir_contents *contents)
 {
 	DIR *dirp = NULL;
 	struct dirent *ent = NULL;
@@ -28,9 +17,9 @@ scan_dir(char *dir_path, dir_contents *contents)
 
 	dirp = opendir(dir_path);
 	if (!dirp) {
-		printf("ERROR: Can't open '%s':\n", dir_path);
-		printf("%s\n", strerror(errno));
-		return;
+		// printf("ERROR: Can't open '%s':\n", dir_path);
+		// printf("%s\n", strerror(errno));
+		return (-1);
 	}
 
 	while ((ent = readdir(dirp)) != NULL) {
@@ -44,14 +33,5 @@ scan_dir(char *dir_path, dir_contents *contents)
 	}
 	contents->amount = index;
 	(void) closedir(dirp);
-}
-
-
-void
-show_dir_content(dir_contents *contents)
-{
-	int index;
-	for (index = 0; index < contents->amount; index++) {
-		// printw("file: %s\n", &contents->list[index]);
-	}
+	return (0);
 }
