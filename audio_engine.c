@@ -348,20 +348,12 @@ pause_command()
 	pthread_mutex_unlock(&audio_cmd_mutex);
 }
 
-/*
- * Receives commands from ui using socket connection.
- */
-void
-socket_daemon()
+int
+init_network()
 {
-	int sock_fd, conn_fd, err, len;
+	int sock_fd, err;
 	struct sockaddr_in addr;
 	int in_queue = 5;
-	char *str_buf;
-	bool has_content;
-
-	struct cmd_pkt_header pkt_hdr, host_pkt_hdr;
-	host_pkt_hdr.cmd = CMD_UNKNOWN;
 
 	memset(&addr, 0, sizeof (addr));
 	addr.sin_family = AF_INET;
@@ -372,21 +364,45 @@ socket_daemon()
 	sock_fd = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);
 	if (!sock_fd) {
 		logger("ERROR: socket error: %s\n", strerror(errno));
+		return (0);
 	}
 
 	logger("socket_daemon - bind()\n");
 	err = bind(sock_fd, (struct sockaddr *)&addr, sizeof (addr));
 	if (err) {
 		logger("ERROR: bind error: %s\n", strerror(errno));
+		close(sock_fd);
+		return (0);
 	}
 
 	logger("socket_daemon - listen()\n");
 	err = listen(sock_fd, in_queue);
 	if (err) {
 		logger("ERROR: listen error: %s\n", strerror(errno));
+		close(sock_fd);
+		return (0);
 	}
 
-	logger("socket_daemon - initial cmd: %d\n", host_pkt_hdr.cmd);
+	return (sock_fd);
+}
+
+/*
+ * Receives commands from ui using socket connection.
+ */
+void
+socket_daemon()
+{
+	int sock_fd, conn_fd, len;
+	char *str_buf;
+	bool has_content;
+
+	struct cmd_pkt_header pkt_hdr, host_pkt_hdr;
+	host_pkt_hdr.cmd = CMD_UNKNOWN;
+
+	sock_fd = init_network();
+	if (!sock_fd) {
+		return;
+	}
 
 	logger("socket_daemon - waiting for new connection..\n");
 	conn_fd = accept(sock_fd, NULL, NULL);
