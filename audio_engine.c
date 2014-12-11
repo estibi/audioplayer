@@ -46,19 +46,22 @@ int *buffer;
 
 void stop_command();
 void quit_command();
-void socket_daemon();
+int socket_daemon();
 int signal_cond_event();
 
-void
+int
 engine_daemon()
 {
+	int err;
+
 	logger("########################################\n");
 	logger("engine_daemon()\n");
 	ao_initialize();
 	default_driver = ao_default_driver_id();
-	socket_daemon();
-
+	err = socket_daemon();
 	ao_shutdown();
+
+	return (err);
 }
 
 void
@@ -389,7 +392,7 @@ init_network()
 /*
  * Receives commands from ui using socket connection.
  */
-void
+int
 socket_daemon()
 {
 	int sock_fd, conn_fd, len;
@@ -401,15 +404,15 @@ socket_daemon()
 
 	sock_fd = init_network();
 	if (!sock_fd) {
-		return;
+		return (-1);
 	}
 
 	logger("socket_daemon - waiting for new connection..\n");
 	conn_fd = accept(sock_fd, NULL, NULL);
 	if (conn_fd == -1) {
 		logger("ERROR: accept error: %s\n", strerror(errno));
-		close(conn_fd);
-		return;
+		close(sock_fd);
+		return (-1);
 	}
 	logger("new connection, conn_fd: %d\n", conn_fd);
 
@@ -473,13 +476,13 @@ socket_daemon()
 		case CMD_QUIT:
 			logger("socket_daemon received CMD_QUIT\n");
 			stop_command();
-			logger("socket_daemon - closing socket\n");
 			close(conn_fd);
+			close(sock_fd);
 			if (pthread_kill(ao_thread, 0) == 0) {
 				logger("waiting for audio thread..\n");
 				pthread_join(ao_thread, NULL);
 			}
-			return;
+			return (0);
 		case CMD_FF:
 			logger("socket_daemon received CMD_FF\n");
 			ff_command();
@@ -496,6 +499,13 @@ socket_daemon()
 			has_content = false;
 		}
 	}
-	logger("socket_daemon - closing socket\n");
+	// we are here if error occurred
+	stop_command();
 	close(conn_fd);
+	close(sock_fd);
+	if (pthread_kill(ao_thread, 0) == 0) {
+		logger("waiting for audio thread..\n");
+		pthread_join(ao_thread, NULL);
+	}
+	return (-1);
 }

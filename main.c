@@ -13,7 +13,7 @@
 int
 init_audio_engine()
 {
-	int pid;
+	int pid, err;
 	pid = fork();
 	if (pid < 0) {
 		printf("fork error, exiting..\n");
@@ -26,8 +26,12 @@ init_audio_engine()
 	}
 
 	// we are a child process
-	engine_daemon();
-	exit(0);
+	err = engine_daemon();
+	if (!err) {
+		exit(0);
+	}
+	printf("audio daemon exited with error\n");
+	exit(1);
 }
 
 int

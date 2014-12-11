@@ -14,4 +14,4 @@ struct cmd_pkt_header {
 	uint32_t size;
 };
 
-void engine_daemon();
+int engine_daemon();
