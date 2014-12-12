@@ -84,7 +84,13 @@ int
 send_play_command(int sock_fd)
 {
 	cmd_t cmd = CMD_PLAY;
-	return (send_command(sock_fd, cmd, "test.wav"));
+	struct dir_contents *contents;
+	char *ptr;
+
+	contents = file_list.contents;
+	ptr = (char *)&contents->list[file_list.cur_idx];
+
+	return (send_command(sock_fd, cmd, ptr));
 }
 
 int
@@ -211,6 +217,10 @@ curses_loop()
 		key = wgetch(main_win);
 		switch (key) {
 		case KEY_UP:
+			break;
+		case 10: // ENTER
+			mvwprintw(status_win, 1, 5, "CMD: PLAY ");
+			send_play_command(sock_fd);
 			break;
 		case 'p':
 			mvwprintw(status_win, 1, 5, "CMD: PLAY ");
