@@ -104,6 +104,46 @@ key_enter()
 	return (send_command(sock_fd, cmd, ptr));
 }
 
+
+void
+key_down()
+{
+	// DOWN - scroll files
+	if (file_list.cur_idx < file_list.contents->amount -1 &&
+			file_list.cur_idx < file_list.tail_idx) {
+		file_list.cur_idx += 1;
+		show_files(main_win, false);
+		return;
+	}
+
+	if (file_list.cur_idx < file_list.contents->amount -1 &&
+			file_list.cur_idx == file_list.tail_idx) {
+		file_list.cur_idx += 1;
+			file_list.head_idx += 1;
+			file_list.tail_idx += 1;
+			show_files(main_win, false);
+	}
+}
+
+void
+key_up()
+{
+	// UP - scroll files
+	if (file_list.cur_idx > file_list.head_idx) {
+		file_list.cur_idx -= 1;
+		//file_list.tail_idx -= 1;
+		show_files(main_win, false);
+		return;
+	}
+	if (file_list.cur_idx == file_list.head_idx &&
+			file_list.head_idx > 0) {
+		file_list.head_idx -= 1;
+		file_list.tail_idx -= 1;
+		file_list.cur_idx -= 1;
+		show_files(main_win, false);
+	}
+}
+
 int
 send_pause_command(int sock_fd)
 {
@@ -256,37 +296,11 @@ curses_loop()
 			break;
 		case 66:
 			// DOWN - scroll files
-		if (file_list.cur_idx < file_list.contents->amount -1 &&
-					file_list.cur_idx < file_list.tail_idx) {
-				file_list.cur_idx += 1;
-				show_files(main_win, false);
-				break;
-			}
-			if (file_list.cur_idx < file_list.contents->amount -1 &&
-					file_list.cur_idx == file_list.tail_idx) {
-				file_list.cur_idx += 1;
-				file_list.head_idx += 1;
-				file_list.tail_idx += 1;
-				show_files(main_win, false);
-				break;
-			}
+			key_down();
 			break;
 		case 65:
 			// UP - scroll files
-			if (file_list.cur_idx > file_list.head_idx) {
-				file_list.cur_idx -= 1;
-				//file_list.tail_idx -= 1;
-				show_files(main_win, false);
-				break;
-			}
-			if (file_list.cur_idx == file_list.head_idx &&
-					file_list.head_idx > 0) {
-				file_list.head_idx -= 1;
-				file_list.tail_idx -= 1;
-				file_list.cur_idx -= 1;
-				show_files(main_win, false);
-				break;
-			}
+			key_up();
 			break;
 		default:
 			mvwprintw(status_win, 10, 1, "pressed:");
