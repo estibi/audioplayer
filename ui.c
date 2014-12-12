@@ -20,7 +20,7 @@ struct ui_file_list {
 	// last file to show
 	unsigned int tail_idx;
 	// selected file
-	unsigned int selected_idx;
+	unsigned int cur_idx;
 } file_list;
 
 void show_files(WINDOW *w);
@@ -239,18 +239,36 @@ curses_loop()
 			break;
 		case 66:
 			// DOWN - scroll files
-			if (file_list.tail_idx < file_list.contents->amount) {
+		if (file_list.cur_idx < file_list.contents->amount -1 &&
+					file_list.cur_idx < file_list.tail_idx) {
+				file_list.cur_idx += 1;
+				show_files(main_win);
+				break;
+			}
+			if (file_list.cur_idx < file_list.contents->amount -1 &&
+					file_list.cur_idx == file_list.tail_idx) {
+				file_list.cur_idx += 1;
 				file_list.head_idx += 1;
 				file_list.tail_idx += 1;
 				show_files(main_win);
+				break;
 			}
 			break;
 		case 65:
 			// UP - scroll files
-			if (file_list.head_idx > 0) {
+			if (file_list.cur_idx > file_list.head_idx) {
+				file_list.cur_idx -= 1;
+				//file_list.tail_idx -= 1;
+				show_files(main_win);
+				break;
+			}
+			if (file_list.cur_idx == file_list.head_idx &&
+					file_list.head_idx > 0) {
 				file_list.head_idx -= 1;
 				file_list.tail_idx -= 1;
+				file_list.cur_idx -= 1;
 				show_files(main_win);
+				break;
 			}
 			break;
 		default:
@@ -276,7 +294,8 @@ init_file_list(WINDOW *w)
 	getmaxyx(w, y, x);
 
 	file_list.head_idx = 0;
-	file_list.tail_idx = y - 3;
+	file_list.tail_idx = y - 4;
+	file_list.cur_idx = 0;
 
 	return (1);
 }
@@ -305,15 +324,29 @@ show_files(WINDOW *w)
 	}
 
 	index = file_list.head_idx;
+
+	// TODO
 	y_pos = 2;
-	//mvwprintw(w, 1, 1, "/.. DEBUG: %d %d", index, file_list.tail_idx);
+	mvwprintw(w, 1, 1, "%*s", win_x - 2, " ");
 	mvwprintw(w, 1, 1, "/..");
+
+	/*
+	mvwprintw(w, 1, 1,
+		"/.. DEBUG: index: %d head_idx %d head_tail: %d current: %d amount: %d",
+		index, file_list.head_idx, file_list.tail_idx,
+		file_list.cur_idx, file_list.contents->amount);
+	*/
 	for (; index < contents->amount; index++) {
-		if (index == file_list.tail_idx)
+		if (index > file_list.tail_idx)
 			break;
 		// clear a line with spaces
 		mvwprintw(w, y_pos, 1, "%*s", win_x - 2, " ");
-		mvwprintw(w, y_pos, 1, "%s", &contents->list[index]);
+
+		if (file_list.cur_idx == index) {
+			mvwprintw(w, y_pos, 1, "%s  <--", &contents->list[index]);
+		} else {
+			mvwprintw(w, y_pos, 1, "%s", &contents->list[index]);
+		}
 		y_pos++;
 	}
 	wrefresh(w);
