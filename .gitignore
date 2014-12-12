@@ -25,3 +25,7 @@
 audioplayer
 *.log
 *.wav
+*.aiff
+*.m4a
+*.mp3
+*.ogg
