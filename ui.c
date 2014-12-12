@@ -13,6 +13,18 @@
 int sock_fd;
 WINDOW *main_win, *status_win;
 
+struct ui_file_list {
+	struct dir_contents *contents;
+	// first file to show
+	unsigned int head_idx;
+	// last file to show
+	unsigned int tail_idx;
+	// selected file
+	unsigned int selected_idx;
+} file_list;
+
+void show_files(WINDOW *w);
+
 int
 send_command(int sock_fd, cmd_t cmd, char *s)
 {
@@ -225,6 +237,22 @@ curses_loop()
 			mvwprintw(status_win, 1, 5, "CMD: FF   ");
 			send_ff_command(sock_fd);
 			break;
+		case 66:
+			// DOWN - scroll files
+			if (file_list.tail_idx < file_list.contents->amount) {
+				file_list.head_idx += 1;
+				file_list.tail_idx += 1;
+				show_files(main_win);
+			}
+			break;
+		case 65:
+			// UP - scroll files
+			if (file_list.head_idx > 0) {
+				file_list.head_idx -= 1;
+				file_list.tail_idx -= 1;
+				show_files(main_win);
+			}
+			break;
 		default:
 			mvwprintw(status_win, 10, 1, "pressed:");
 			mvwprintw(status_win, 11, 1, "%3d as '%c'", key, key);
@@ -234,23 +262,59 @@ curses_loop()
 	}
 }
 
+int
+init_file_list(WINDOW *w)
+{
+	int y, x;
+	struct dir_contents *contents;
+	contents = malloc(sizeof (struct dir_contents));
+	if (!contents) {
+		return (0);
+	}
+	file_list.contents = contents;
+
+	getmaxyx(w, y, x);
+
+	file_list.head_idx = 0;
+	file_list.tail_idx = y - 3;
+
+	return (1);
+}
+
+void
+fini_file_list()
+{
+	free(file_list.contents);
+}
+
 void
 show_files(WINDOW *w)
 {
-	int index, err;
-	struct dir_contents contents;
+	int index, err, y_pos, win_y, win_x;
+	struct dir_contents *contents;
 	char *dir_path = ".";
-	err = scan_dir(dir_path, &contents);
+
+	contents = file_list.contents;
+	getmaxyx(w, win_y, win_x);
+
+	err = scan_dir(dir_path, contents);
 	if (err == -1) {
 		mvwprintw(w, 1, 1, "ERROR - CAN'T LOAD FILES");
 		wrefresh(w);
 		return;
 	}
 
-	mvwprintw(w, 1, 1, "FILES:");
-	mvwprintw(w, 2, 1, "/..");
-	for (index = 0; index < contents.amount; index++) {
-		mvwprintw(w, index + 3, 1, "%s", &contents.list[index]);
+	index = file_list.head_idx;
+	y_pos = 2;
+	//mvwprintw(w, 1, 1, "/.. DEBUG: %d %d", index, file_list.tail_idx);
+	mvwprintw(w, 1, 1, "/..");
+	for (; index < contents->amount; index++) {
+		if (index == file_list.tail_idx)
+			break;
+		// clear a line with spaces
+		mvwprintw(w, y_pos, 1, "%*s", win_x - 2, " ");
+		mvwprintw(w, y_pos, 1, "%s", &contents->list[index]);
+		y_pos++;
 	}
 	wrefresh(w);
 }
@@ -278,11 +342,20 @@ ui_init()
 void
 curses_ui()
 {
+	int err;
 	ui_init();
 
-	show_files(main_win);
+	err = init_file_list(main_win);
+	if (err == 0) {
+		// TODO
+		return;
+	}
+
 	sock_fd = get_client_socket();
+
+	show_files(main_win);
 	curses_loop();
 
+	fini_file_list();
 	ui_cleanup();
 }
