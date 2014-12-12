@@ -23,8 +23,8 @@ scan_dir(char *dir_path, struct dir_contents *contents)
 	}
 
 	while ((ent = readdir(dirp)) != NULL) {
-		if (ent->d_name[0] == '.')
-			continue; /* skip . and .. */
+		if (ent->d_name[0] == '.' && ent->d_name[1] == 0 )
+			continue; /* skip . */
 		snprintf((char *)&contents->list[index],
 			sizeof (filename),
 			"%s",

@@ -294,7 +294,7 @@ init_file_list(WINDOW *w)
 	getmaxyx(w, y, x);
 
 	file_list.head_idx = 0;
-	file_list.tail_idx = y - 4;
+	file_list.tail_idx = y - 3;
 	file_list.cur_idx = 0;
 
 	return (1);
@@ -325,13 +325,11 @@ show_files(WINDOW *w)
 
 	index = file_list.head_idx;
 
-	// TODO
-	y_pos = 2;
-	mvwprintw(w, 1, 1, "%*s", win_x - 2, " ");
-	mvwprintw(w, 1, 1, "/..");
+	y_pos = 1;
 
 	/*
-	mvwprintw(w, 1, 1,
+	mvwprintw(w, 0, 0, "%*s", win_x - 2, " ");
+	mvwprintw(w, 0, 0,
 		"/.. DEBUG: index: %d head_idx %d head_tail: %d current: %d amount: %d",
 		index, file_list.head_idx, file_list.tail_idx,
 		file_list.cur_idx, file_list.contents->amount);
