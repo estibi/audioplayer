@@ -23,7 +23,7 @@ struct ui_file_list {
 	unsigned int cur_idx;
 } file_list;
 
-void show_files(WINDOW *w);
+void show_files(WINDOW *w, bool);
 
 int
 send_command(int sock_fd, cmd_t cmd, char *s)
@@ -81,14 +81,25 @@ send_command(int sock_fd, cmd_t cmd, char *s)
 
 
 int
-send_play_command(int sock_fd)
+key_enter()
 {
+	mvwprintw(status_win, 1, 5, "CMD: PLAY ");
+
 	cmd_t cmd = CMD_PLAY;
 	struct dir_contents *contents;
 	char *ptr;
 
 	contents = file_list.contents;
 	ptr = (char *)&contents->list[file_list.cur_idx];
+
+	// go to parent directory if ".."
+	if (*ptr == '.' && *ptr++ == '.') {
+		if (chdir("..") == -1) {
+			return (-1);
+		}
+		show_files(main_win, true);
+		return (0);
+	}
 
 	return (send_command(sock_fd, cmd, ptr));
 }
@@ -218,13 +229,9 @@ curses_loop()
 		switch (key) {
 		case KEY_UP:
 			break;
-		case 10: // ENTER
-			mvwprintw(status_win, 1, 5, "CMD: PLAY ");
-			send_play_command(sock_fd);
-			break;
+		case 10:	// 10 == ENTER
 		case 'p':
-			mvwprintw(status_win, 1, 5, "CMD: PLAY ");
-			send_play_command(sock_fd);
+			key_enter();
 			break;
 		case ' ':
 			mvwprintw(status_win, 1, 5, "CMD: PAUSE");
@@ -252,7 +259,7 @@ curses_loop()
 		if (file_list.cur_idx < file_list.contents->amount -1 &&
 					file_list.cur_idx < file_list.tail_idx) {
 				file_list.cur_idx += 1;
-				show_files(main_win);
+				show_files(main_win, false);
 				break;
 			}
 			if (file_list.cur_idx < file_list.contents->amount -1 &&
@@ -260,7 +267,7 @@ curses_loop()
 				file_list.cur_idx += 1;
 				file_list.head_idx += 1;
 				file_list.tail_idx += 1;
-				show_files(main_win);
+				show_files(main_win, false);
 				break;
 			}
 			break;
@@ -269,7 +276,7 @@ curses_loop()
 			if (file_list.cur_idx > file_list.head_idx) {
 				file_list.cur_idx -= 1;
 				//file_list.tail_idx -= 1;
-				show_files(main_win);
+				show_files(main_win, false);
 				break;
 			}
 			if (file_list.cur_idx == file_list.head_idx &&
@@ -277,7 +284,7 @@ curses_loop()
 				file_list.head_idx -= 1;
 				file_list.tail_idx -= 1;
 				file_list.cur_idx -= 1;
-				show_files(main_win);
+				show_files(main_win, false);
 				break;
 			}
 			break;
@@ -317,7 +324,7 @@ fini_file_list()
 }
 
 void
-show_files(WINDOW *w)
+show_files(WINDOW *w, bool clear)
 {
 	int index, err, y_pos, win_y, win_x;
 	struct dir_contents *contents;
@@ -325,6 +332,9 @@ show_files(WINDOW *w)
 
 	contents = file_list.contents;
 	getmaxyx(w, win_y, win_x);
+
+	if (clear)
+		wclear(w);
 
 	err = scan_dir(dir_path, contents);
 	if (err == -1) {
@@ -394,7 +404,7 @@ curses_ui()
 
 	sock_fd = get_client_socket();
 
-	show_files(main_win);
+	show_files(main_win, false);
 	curses_loop();
 
 	fini_file_list();
