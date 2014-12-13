@@ -1,11 +1,31 @@
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <dirent.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "utils.h"
+
+bool
+is_directory(char *file)
+{
+	int err;
+	struct stat file_stat;
+
+	err = stat(file, &file_stat);
+	if (!err) {
+		// TODO
+		return (false)
+	}
+
+	if (file_stat.st_mode & S_IFDIR)
+		return (true);
+
+	return (false);
+}
 
 int
 scan_dir(char *dir_path, struct dir_contents *contents)
@@ -25,8 +45,8 @@ scan_dir(char *dir_path, struct dir_contents *contents)
 	while ((ent = readdir(dirp)) != NULL) {
 		if (ent->d_name[0] == '.' && ent->d_name[1] == 0 )
 			continue; /* skip . */
-		snprintf((char *)&contents->list[index],
-			sizeof (filename),
+		snprintf((char *)&contents->list[index].name,
+			NAME_MAX,
 			"%s",
 			ent->d_name);
 		index++;

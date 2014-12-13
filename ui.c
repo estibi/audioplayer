@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <ncurses.h>
 #include <netinet/in.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -79,6 +80,18 @@ send_command(int sock_fd, cmd_t cmd, char *s)
 	return (0);
 }
 
+int
+change_directory(char *dir)
+{
+	if (chdir(dir) == -1) {
+		mvwprintw(status_win, 3, 5, "ERROR ");
+		return (-1);
+	}
+	// reset cursor/file position after changing directory
+	file_list.cur_idx = 0;
+	show_files(main_win, true);
+	return (0);
+}
 
 int
 key_enter()
@@ -90,14 +103,15 @@ key_enter()
 	char *ptr;
 
 	contents = file_list.contents;
-	ptr = (char *)&contents->list[file_list.cur_idx];
 
-	// go to parent directory if ".."
-	if (*ptr == '.' && *ptr++ == '.') {
-		if (chdir("..") == -1) {
+	// file of directory name
+	ptr = (char *)&contents->list[file_list.cur_idx].name;
+
+	if (is_directory(ptr)) {
+		if (change_directory(ptr) == -1) {
+			mvwprintw(status_win, 3, 5, "ERROR ");
 			return (-1);
 		}
-		show_files(main_win, true);
 		return (0);
 	}
 
@@ -375,9 +389,9 @@ show_files(WINDOW *w, bool clear)
 		mvwprintw(w, y_pos, 1, "%*s", win_x - 2, " ");
 
 		if (file_list.cur_idx == index) {
-			mvwprintw(w, y_pos, 1, "%s  <--", &contents->list[index]);
+			mvwprintw(w, y_pos, 1, "%s  <--", &contents->list[index].name);
 		} else {
-			mvwprintw(w, y_pos, 1, "%s", &contents->list[index]);
+			mvwprintw(w, y_pos, 1, "%s", &contents->list[index].name);
 		}
 		y_pos++;
 	}
