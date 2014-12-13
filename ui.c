@@ -1,6 +1,8 @@
 #include <errno.h>
 #include <ncurses.h>
 #include <netinet/in.h>
+#include <pthread.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -24,9 +26,15 @@ struct ui_file_list {
 	unsigned int cur_idx;
 } file_list;
 
+// socket receiver thread
+pthread_t receiver_thread = NULL;
+pthread_attr_t *rcv_attr = NULL;
+void *rcv_arg = NULL;
+
 void show_files(WINDOW *w, bool);
 void free_dir_list();
 int init_list_for_dir();
+
 
 int
 send_command(int sock_fd, cmd_t cmd, char *s)
@@ -382,6 +390,25 @@ get_client_socket()
 	}
 }
 
+void *
+socket_receiver()
+{
+	int len;
+	unsigned int str_size, buf_size, x;
+	char *buf[256];
+
+	for (;;) {
+		len = read(sock_fd, buf, sizeof (x));
+		if (len == -1) {
+			printw("ERROR socket_receiver: %s\n", strerror(errno));
+			refresh();
+			sleep(1);
+		}
+		//printw("socket_receiver: %d", len);
+		//refresh();
+	}
+}
+
 void
 curses_loop()
 {
@@ -504,6 +531,12 @@ curses_ui()
 	}
 
 	sock_fd = get_client_socket();
+
+	err = pthread_create(&receiver_thread, rcv_attr, socket_receiver, rcv_arg);
+	if (err != 0) {
+		mvwprintw(main_win, 0, 1, "ERROR: receiver thread");
+		wrefresh(main_win);
+	}
 
 	show_files(main_win, false);
 	curses_loop();

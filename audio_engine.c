@@ -32,10 +32,17 @@ static ao_device *device;
 ao_sample_format format;
 int default_driver;
 
+
 // audio engine thread
 pthread_t ao_thread = NULL;
 pthread_attr_t *aot_attr = NULL;
 void *ao_arg = NULL;
+
+// socket sender thread
+pthread_t sender_thread = NULL;
+pthread_attr_t *sender_attr = NULL;
+void *sender_arg = NULL;
+
 
 volatile cmd_t audio_cmd;
 
@@ -43,12 +50,18 @@ pthread_mutex_t audio_cmd_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t ao_event_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t ao_event = PTHREAD_COND_INITIALIZER;
 
+// used by audio thread
 int *buffer;
+
+static int sock_fd, conn_fd;
 
 void stop_command();
 void quit_command();
-int socket_daemon();
+int socket_daemon_loop();
 int signal_cond_event();
+int get_connection_fd();
+int init_network();
+void *socket_sender();
 
 int
 engine_daemon()
@@ -57,12 +70,43 @@ engine_daemon()
 
 	logger("########################################\n");
 	logger("engine_daemon()\n");
+
+	sock_fd = init_network();
+	if (!sock_fd) {
+		return (-1);
+	}
+	conn_fd = get_connection_fd();
+	if (conn_fd == -1) {
+		return (-1);
+	}
+
 	ao_initialize();
 	default_driver = ao_default_driver_id();
-	err = socket_daemon();
+
+	err = pthread_create(&sender_thread, sender_attr, socket_sender, sender_arg);
+	if (err != 0) {
+		logger("ERROR: sender thread");
+	}
+
+	err = socket_daemon_loop();
 	ao_shutdown();
 
 	return (err);
+}
+
+void *
+socket_sender()
+{
+	int len, x;
+
+	for (;;) {
+		len = write(conn_fd, &x, sizeof (x));
+		logger("socket_sender: sent %d bytes\n", len);
+		if (len == -1) {
+			logger("socket_sender: %s\n", strerror(errno));
+		}
+		sleep(5);
+	}
 }
 
 void
@@ -374,6 +418,7 @@ int
 init_network()
 {
 	int sock_fd, err;
+	//int err;
 	struct sockaddr_in addr;
 	int in_queue = 5;
 
@@ -408,24 +453,10 @@ init_network()
 	return (sock_fd);
 }
 
-/*
- * Receives commands from ui using socket connection.
- */
 int
-socket_daemon()
+get_connection_fd()
 {
-	int sock_fd, conn_fd, len;
-	char *str_buf;
-	bool has_content = false;
-
-	struct cmd_pkt_header pkt_hdr, host_pkt_hdr;
-	host_pkt_hdr.cmd = CMD_UNKNOWN;
-
-	sock_fd = init_network();
-	if (!sock_fd) {
-		return (-1);
-	}
-
+	int conn_fd;
 	logger("socket_daemon - waiting for new connection..\n");
 	conn_fd = accept(sock_fd, NULL, NULL);
 	if (conn_fd == -1) {
@@ -434,6 +465,21 @@ socket_daemon()
 		return (-1);
 	}
 	logger("new connection, conn_fd: %d\n", conn_fd);
+	return (conn_fd);
+}
+
+/*
+ * Receives commands from ui using socket connection.
+ */
+int
+socket_daemon_loop()
+{
+	int len;
+	char *str_buf;
+	bool has_content = false;
+
+	struct cmd_pkt_header pkt_hdr, host_pkt_hdr;
+	host_pkt_hdr.cmd = CMD_UNKNOWN;
 
 	for (;;) {
 		logger("reading from socket..\n");
