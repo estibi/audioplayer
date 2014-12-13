@@ -16,9 +16,9 @@ is_directory(char *file)
 	struct stat file_stat;
 
 	err = stat(file, &file_stat);
-	if (!err) {
+	if (err == -1) {
 		// TODO
-		return (false)
+		return (false);
 	}
 
 	if (file_stat.st_mode & S_IFDIR)
