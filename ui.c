@@ -25,6 +25,8 @@ struct ui_file_list {
 } file_list;
 
 void show_files(WINDOW *w, bool);
+void free_dir_list();
+int init_list_for_dir();
 
 int
 send_command(int sock_fd, cmd_t cmd, char *s)
@@ -80,41 +82,152 @@ send_command(int sock_fd, cmd_t cmd, char *s)
 	return (0);
 }
 
+
+
 int
 change_directory(char *dir)
 {
+	int err, y, x;
+
 	if (chdir(dir) == -1) {
-		mvwprintw(status_win, 3, 5, "ERROR ");
+		mvwprintw(status_win, 3, 1, "can't change dir: %s", dir);
 		return (-1);
 	}
 	// reset cursor/file position after changing directory
 	file_list.cur_idx = 0;
+
+	// clean up old list
+	free_dir_list();
+
+	// allocate new list
+	init_list_for_dir();
+
+	//populate list with file/directory names
+	err = scan_dir(file_list.contents);
+	if (err == -1) {
+		mvwprintw(status_win, 1, 1, "ERROR in change_directory()");
+		wrefresh(status_win);
+		return (-1);
+	}
+
+	getmaxyx(main_win, y, x);
+
+	file_list.head_idx = 0;
+	file_list.tail_idx = y - 3;
+	file_list.cur_idx = 0;
+
 	show_files(main_win, true);
 	return (0);
 }
 
 int
+init_list_for_dir(char *dir)
+{
+	int i, amount;
+	struct dir_contents *contents;
+	fileobj **list;
+
+	amount = count_dir_entries(".");
+	if (amount == 0)
+		return (-1);
+
+	contents = malloc(sizeof (contents));
+	if (!contents) {
+		return (-1);
+	}
+
+	list = malloc(sizeof (contents->list) * amount);
+	if (!list) {
+		return (-1);
+	}
+
+	for (i = 0; i < amount; i++) {
+		list[i] = malloc(NAME_MAX);
+		if (!list[i]) {
+			return (-1);
+		}
+	}
+
+	contents->list = list;
+	contents->amount = amount;
+
+	file_list.contents = contents;
+
+	return (0);
+}
+
+void
+free_dir_list()
+{
+	int i;
+
+	for (i = 0; i < file_list.contents->amount; i++) {
+		free(file_list.contents->list[i]);
+	}
+
+	free(file_list.contents->list);
+	free(file_list.contents);
+}
+
+int
+init_file_list(WINDOW *w)
+{
+	int y, x, err;
+
+	if (init_list_for_dir(".") == -1) {
+		return (-1);
+	}
+
+	err = scan_dir(file_list.contents);
+	if (err == -1) {
+		mvwprintw(w, 1, 1, "ERROR - CAN'T LOAD FILES");
+		wrefresh(w);
+		return (-1);
+	}
+
+	getmaxyx(w, y, x);
+
+	file_list.head_idx = 0;
+	file_list.tail_idx = y - 3;
+	file_list.cur_idx = 0;
+
+	return (1);
+}
+
+int
 key_enter()
 {
-	mvwprintw(status_win, 1, 5, "CMD: PLAY ");
-
 	cmd_t cmd = CMD_PLAY;
 	struct dir_contents *contents;
-	char *ptr;
+	char *ptr, *buf;
+	unsigned int buf_size;
 
 	contents = file_list.contents;
 
 	// file of directory name
-	ptr = (char *)&contents->list[file_list.cur_idx].name;
+	ptr = (char *)&contents->list[file_list.cur_idx]->name;
 
 	if (is_directory(ptr)) {
-		if (change_directory(ptr) == -1) {
-			mvwprintw(status_win, 3, 5, "ERROR ");
+		mvwprintw(status_win, 1, 5, "CHDIR  ");
+
+		buf_size = strlen(ptr) + 1;
+		buf = malloc(buf_size);
+		if (!buf) {
+			mvwprintw(status_win, 3, 5, "MALLOC ERROR");
 			return (-1);
 		}
+		strncpy(buf, ptr, strlen(ptr));
+		buf[buf_size - 1] = '\0';
+		if (change_directory(buf) == -1) {
+			mvwprintw(status_win, 3, 5, "ERROR: %s", buf);
+			free(buf);
+			return (-1);
+		}
+		free(buf);
 		return (0);
 	}
 
+	mvwprintw(status_win, 1, 5, "CMD: PLAY ");
 	return (send_command(sock_fd, cmd, ptr));
 }
 
@@ -325,38 +438,11 @@ curses_loop()
 	}
 }
 
-int
-init_file_list(WINDOW *w)
-{
-	int y, x;
-	struct dir_contents *contents;
-	contents = malloc(sizeof (struct dir_contents));
-	if (!contents) {
-		return (0);
-	}
-	file_list.contents = contents;
-
-	getmaxyx(w, y, x);
-
-	file_list.head_idx = 0;
-	file_list.tail_idx = y - 3;
-	file_list.cur_idx = 0;
-
-	return (1);
-}
-
-void
-fini_file_list()
-{
-	free(file_list.contents);
-}
-
 void
 show_files(WINDOW *w, bool clear)
 {
-	int index, err, y_pos, win_y, win_x;
+	int index, y_pos, win_y, win_x;
 	struct dir_contents *contents;
-	char *dir_path = ".";
 
 	contents = file_list.contents;
 	getmaxyx(w, win_y, win_x);
@@ -364,24 +450,10 @@ show_files(WINDOW *w, bool clear)
 	if (clear)
 		wclear(w);
 
-	err = scan_dir(dir_path, contents);
-	if (err == -1) {
-		mvwprintw(w, 1, 1, "ERROR - CAN'T LOAD FILES");
-		wrefresh(w);
-		return;
-	}
-
 	index = file_list.head_idx;
 
 	y_pos = 1;
 
-	/*
-	mvwprintw(w, 0, 0, "%*s", win_x - 2, " ");
-	mvwprintw(w, 0, 0,
-		"/.. DEBUG: index: %d head_idx %d head_tail: %d current: %d amount: %d",
-		index, file_list.head_idx, file_list.tail_idx,
-		file_list.cur_idx, file_list.contents->amount);
-	*/
 	for (; index < contents->amount; index++) {
 		if (index > file_list.tail_idx)
 			break;
@@ -389,9 +461,9 @@ show_files(WINDOW *w, bool clear)
 		mvwprintw(w, y_pos, 1, "%*s", win_x - 2, " ");
 
 		if (file_list.cur_idx == index) {
-			mvwprintw(w, y_pos, 1, "%s  <--", &contents->list[index].name);
+			mvwprintw(w, y_pos, 1, "%s  <--", &contents->list[index]->name);
 		} else {
-			mvwprintw(w, y_pos, 1, "%s", &contents->list[index].name);
+			mvwprintw(w, y_pos, 1, "%s", &contents->list[index]->name);
 		}
 		y_pos++;
 	}
@@ -435,6 +507,6 @@ curses_ui()
 	show_files(main_win, false);
 	curses_loop();
 
-	fini_file_list();
+	free_dir_list();
 	ui_cleanup();
 }

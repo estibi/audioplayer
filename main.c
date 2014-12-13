@@ -35,7 +35,7 @@ init_audio_engine()
 }
 
 int
-main(int argc, char **argv)
+main(int argc, char *argv[])
 {
 	int daemon_pid, status, err;
 	daemon_pid = init_audio_engine();

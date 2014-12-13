@@ -21,5 +21,5 @@ gcc -Wall -m64 -I/opt/local/include \
     -R/opt/local/lib \
     -lao -lsndfile -lpthread -lncurses \
     -lsocket  -lnsl \
-    -o audioplayer audioplayer.c audio_engine.c
+    -o audioplayer *.c
 

@@ -1,4 +1,3 @@
-#define	FILES_IN_DIR_LIMIT 20000
 #define	NAME_MAX 255
 
 typedef enum {
@@ -13,11 +12,12 @@ typedef struct fileobj_t {
 } fileobj;
 
 struct dir_contents {
-	fileobj list[FILES_IN_DIR_LIMIT];
+	fileobj **list;
 	unsigned int amount;
 };
 
 
 void show_dir_content(struct dir_contents *contents);
-int scan_dir(char *dir_path, struct dir_contents *contents);
+int scan_dir(struct dir_contents *contents);
 bool is_directory(char *file);
+int count_dir_entries(char *dir_path);
