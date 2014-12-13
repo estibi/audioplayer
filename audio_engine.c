@@ -141,7 +141,7 @@ void *
 ao_play_file()
 {
 	int buf_len, buf_size;
-	static bool paused = false, shifted = false;
+	static bool paused = false, shifted = false, last_read = false;
 	sfinfo.format = 0;
 	int read_cnt = 0;
 	int i, play_chunk;
@@ -165,13 +165,22 @@ ao_play_file()
 	// reading a file
 	for (;;) {
 		count = sf_read_int(sndfile, buffer, buf_len);
-		logger("counter: %d\n", (int)count);
+		logger("read from file: %d\n", (int)count);
 		logger("read_cnt: %d\n", read_cnt);
 		if ((int)count == 0) {
 			// end of file
 			pthread_mutex_lock(&audio_cmd_mutex);
 			audio_cmd = CMD_STOP;
 			pthread_exit(NULL);
+		}
+		if (count < buf_len) {
+			if (count <= play_chunk) {
+				ao_play(device, (char *)buffer, count);
+				pthread_mutex_lock(&audio_cmd_mutex);
+				audio_cmd = CMD_STOP;
+				pthread_exit(NULL);
+			}
+			last_read = true;
 		}
 
 		// play in small chunks
@@ -240,6 +249,15 @@ ao_play_file()
 			// play sound
 			ao_play(device, bufp, play_chunk);
 			bufp += play_chunk;
+			if (last_read) {
+				// TODO
+				logger("count: %d\n", count);
+				logger("play_chunk: %d\n", play_chunk);
+				logger("bufp - (char *)buffer: %d\n", bufp - (char *)buffer);
+				if (bufp - (char *)buffer >= count) {
+					break;
+				}
+			}
 		}
 		read_cnt++;
 	}
