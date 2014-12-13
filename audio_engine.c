@@ -185,7 +185,8 @@ void *
 ao_play_file()
 {
 	int buf_len, buf_size;
-	static bool paused = false, shifted = false, last_read = false;
+	static bool paused = false, shifted = false;
+	bool last_read = false;
 	sfinfo.format = 0;
 	int read_cnt = 0;
 	int i, play_chunk;
