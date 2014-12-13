@@ -1,4 +1,6 @@
 #include <netinet/in.h>
+#include <pthread.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -9,7 +11,6 @@
 #include <math.h>
 #include <sndfile.h>
 
-#include <pthread.h>
 
 #include "audio_engine.h"
 #include "logger.h"
