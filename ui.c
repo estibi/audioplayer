@@ -170,7 +170,7 @@ free_dir_list()
 }
 
 int
-init_file_list(WINDOW *w)
+first_run_file_list(WINDOW *w)
 {
 	int y, x, err;
 
@@ -191,7 +191,7 @@ init_file_list(WINDOW *w)
 	file_list.tail_idx = y - 3;
 	file_list.cur_idx = 0;
 
-	return (1);
+	return (0);
 }
 
 int
@@ -312,7 +312,7 @@ prepare_main_window()
 	int w_height, w_width, w_starty = 0, w_startx = 0;
 
 	getmaxyx(stdscr, w_height, w_width);
-	WINDOW *win = newwin(w_height, w_width - 20, w_starty, w_startx);
+	WINDOW *win = newwin(w_height, w_width - 30, w_starty, w_startx);
 
 	init_pair(1, COLOR_RED, COLOR_GREEN);
 	attron(COLOR_PAIR(1));
@@ -334,8 +334,8 @@ prepare_status_window()
 
 	getmaxyx(stdscr, scr_height, scr_width);
 
-	w_height = 20;
-	w_width = 20;
+	w_height = scr_height;
+	w_width = 30;
 	w_starty = 0;
 	w_startx = scr_width - w_width;
 	WINDOW *win = newwin(w_height, w_width, w_starty, w_startx);
@@ -496,9 +496,10 @@ curses_ui()
 	int err;
 	ui_init();
 
-	err = init_file_list(main_win);
-	if (err == 0) {
-		// TODO
+	err = first_run_file_list(main_win);
+	if (err == -1) {
+		mvwprintw(main_win, 0, 1, "ERROR: Can't initialize file list.");
+		wrefresh(main_win);
 		return;
 	}
 
