@@ -1,14 +1,7 @@
-#include <errno.h>
 #include <ncurses.h>
-#include <netinet/in.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #include "protocol.h"
 #include "utils.h"
@@ -34,62 +27,6 @@ void *rcv_arg = NULL;
 void show_files(WINDOW *w, bool);
 void free_dir_list();
 int init_list_for_dir();
-
-
-int
-send_command(int sock_fd, cmd_t cmd, char *s)
-{
-	int len;
-	unsigned int str_size, buf_size;
-	const int MAX_STRING = 256;
-	char *p, *raw_buf;
-
-	struct cmd_pkt_header pkt_hdr;
-
-	pkt_hdr.cmd = htonl(cmd);
-
-	if (s) {
-		str_size = strnlen(s, MAX_STRING);
-		pkt_hdr.size = htonl(str_size + 1);
-		buf_size = sizeof (pkt_hdr) + str_size + 1;
-	} else {
-		str_size = 0;
-		pkt_hdr.size = htonl(0);
-		buf_size = sizeof (pkt_hdr);
-	}
-	// printf("DEBUG: sender buf_size: %d\n", buf_size);
-	raw_buf = malloc(buf_size);
-	if (!raw_buf) {
-		printf("malloc error: %s\n", strerror(errno));
-		return (-1);
-	}
-
-	// copy packet header
-	p = raw_buf;
-	memcpy(p, &pkt_hdr, sizeof (pkt_hdr));
-
-	if (s) {
-		// copy command string
-		p += sizeof (pkt_hdr);
-		memcpy(p, s, str_size);
-
-		// terminate string with 0
-		p += str_size;
-		memset(p, '\0', 1);
-	}
-
-	len = write(sock_fd, raw_buf, buf_size);
-	if (len != buf_size) {
-		printf("write error: %s\n", strerror(errno));
-		printf("len: %d\n", len);
-		printf("buf_size: %d\n", (unsigned int) buf_size);
-		free(raw_buf);
-		return (-1);
-	}
-	free(raw_buf);
-	return (0);
-}
-
 
 
 int
@@ -205,7 +142,7 @@ first_run_file_list(WINDOW *w)
 int
 key_enter()
 {
-	cmd_t cmd = CMD_PLAY;
+	info_t cmd = CMD_PLAY;
 	struct dir_contents *contents;
 	char *ptr, *buf;
 	unsigned int buf_size;
@@ -236,7 +173,7 @@ key_enter()
 	}
 
 	mvwprintw(status_win, 1, 5, "CMD: PLAY ");
-	return (send_command(sock_fd, cmd, ptr));
+	return (send_packet(sock_fd, cmd, ptr));
 }
 
 
@@ -282,36 +219,36 @@ key_up()
 int
 send_pause_command(int sock_fd)
 {
-	cmd_t cmd = CMD_PAUSE;
-	return (send_command(sock_fd, cmd, NULL));
+	info_t cmd = CMD_PAUSE;
+	return (send_packet(sock_fd, cmd, NULL));
 }
 
 int
 send_quit_command(int sock_fd)
 {
-	cmd_t cmd = CMD_QUIT;
-	return (send_command(sock_fd, cmd, NULL));
+	info_t cmd = CMD_QUIT;
+	return (send_packet(sock_fd, cmd, NULL));
 }
 
 int
 send_stop_command(int sock_fd)
 {
-	cmd_t cmd = CMD_STOP;
-	return (send_command(sock_fd, cmd, NULL));
+	info_t cmd = CMD_STOP;
+	return (send_packet(sock_fd, cmd, NULL));
 }
 
 int
 send_ff_command(int sock_fd)
 {
-	cmd_t cmd = CMD_FF;
-	return (send_command(sock_fd, cmd, NULL));
+	info_t cmd = CMD_FF;
+	return (send_packet(sock_fd, cmd, NULL));
 }
 
 int
 send_rev_command(int sock_fd)
 {
-	cmd_t cmd = CMD_REV;
-	return (send_command(sock_fd, cmd, NULL));
+	info_t cmd = CMD_REV;
+	return (send_packet(sock_fd, cmd, NULL));
 }
 
 WINDOW*

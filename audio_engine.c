@@ -1,11 +1,7 @@
-#include <netinet/in.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
-#include <string.h>
-#include <sys/socket.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <ao/ao.h>
 #include <math.h>
@@ -43,7 +39,7 @@ pthread_attr_t *sender_attr = NULL;
 void *sender_arg = NULL;
 
 
-volatile cmd_t audio_cmd;
+volatile info_t audio_cmd;
 
 pthread_mutex_t audio_cmd_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t ao_event_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -482,8 +478,8 @@ engine_socket_receiver()
 	char *str_buf;
 	bool has_content = false;
 
-	struct cmd_pkt_header pkt_hdr, host_pkt_hdr;
-	host_pkt_hdr.cmd = CMD_UNKNOWN;
+	struct pkt_header pkt_hdr, host_pkt_hdr;
+	host_pkt_hdr.info = CMD_UNKNOWN;
 
 	for (;;) {
 		logger("reading from socket..\n");
@@ -499,9 +495,9 @@ engine_socket_receiver()
 			break;
 		}
 
-		host_pkt_hdr.cmd = ntohl(pkt_hdr.cmd);
+		host_pkt_hdr.info = ntohl(pkt_hdr.info);
 		host_pkt_hdr.size = ntohl(pkt_hdr.size);
-		logger("receiver host_pkg_hdr.cmd: %d\n", (unsigned int)host_pkt_hdr.cmd);
+		logger("receiver host_pkg_hdr.info: %d\n", (unsigned int)host_pkt_hdr.info);
 		logger("receiver host_pkg_hdr.size: %d\n", (unsigned int)host_pkt_hdr.size);
 
 		if (host_pkt_hdr.size > 0) {
@@ -524,12 +520,12 @@ engine_socket_receiver()
 			has_content = false;
 		}
 
-		logger("received command: %d\n", host_pkt_hdr.cmd);
+		logger("received command: %d\n", host_pkt_hdr.info);
 		if (has_content) {
 			logger("received string: %s\n", str_buf);
 		}
 
-		switch (host_pkt_hdr.cmd) {
+		switch (host_pkt_hdr.info) {
 		case CMD_PLAY:
 			logger("socket_daemon received CMD_PLAY\n");
 			play_file(str_buf);

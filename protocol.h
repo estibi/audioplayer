@@ -1,3 +1,12 @@
+#include <errno.h>
+#include <netinet/in.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+
 typedef enum {
 	CMD_UNKNOWN,
 	CMD_PLAY,
@@ -5,25 +14,18 @@ typedef enum {
 	CMD_QUIT,
 	CMD_PAUSE,
 	CMD_FF,
-	CMD_REV
-} cmd_t;
-
-struct cmd_pkt_header {
-	uint32_t cmd;
-	uint32_t size;
-};
-
-typedef enum {
+	CMD_REV,
 	STATUS_UNKNOWN,
 	STATUS_PLAY,
 	STATUS_STOP,
 	STATUS_PAUSE,
 	STATUS_EXIT,
 	STATUS_ERROR
-} status_t;
+} info_t;
 
-struct status_pkt_header {
-	uint32_t status;
+struct pkt_header {
+	uint32_t info;
 	uint32_t size;
 };
 
+int send_packet(int fd, info_t info, char *s);

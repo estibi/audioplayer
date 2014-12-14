@@ -13,7 +13,7 @@ LDFLAGS = \
 
 audioplayer:
 	gcc $(CFLAGS) $(LDFLAGS) \
-	-o audioplayer main.c audio_engine.c logger.c ui.c utils.c
+	-o audioplayer *.c
 
 clean:
 	rm -f audioplayer
