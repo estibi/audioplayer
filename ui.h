@@ -1,2 +1,1 @@
-
-void curses_ui();
+int curses_ui();

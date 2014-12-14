@@ -40,7 +40,7 @@ main(int argc, char *argv[])
 	int daemon_pid, status, err;
 	daemon_pid = init_audio_engine();
 
-	curses_ui();
+	err = curses_ui();
 
 	// wait for audio engine
 	err = wait(&status);

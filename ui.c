@@ -7,10 +7,22 @@
 #include "protocol.h"
 #include "utils.h"
 
+#define	status_win_width 30
+
 int sock_fd;
 WINDOW *main_win, *status_win;
 
-struct ui_file_list {
+struct window_dimensions {
+	unsigned int width;
+	unsigned int height;
+	unsigned int startx;
+	unsigned int starty;
+};
+
+struct window_dimensions *main_win_dimensions = NULL;
+struct window_dimensions *status_win_dimensions = NULL;
+
+static struct ui_file_list {
 	struct dir_contents *contents;
 	char *dir_name;
 	// first file to show
@@ -21,14 +33,22 @@ struct ui_file_list {
 	unsigned int cur_idx;
 } file_list;
 
+/*
+ * Saved status of audio engine.
+ * Used by status_win when doing window resize.
+ */
+volatile info_t ui_status_cache = STATUS_UNKNOWN;
+pthread_mutex_t ui_status_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 // socket receiver thread
 pthread_t receiver_thread = NULL;
 pthread_attr_t *rcv_attr = NULL;
 void *rcv_arg = NULL;
 
-void show_files(WINDOW *w, bool);
+void show_files(WINDOW *w);
 void free_dir_list();
 int init_list_for_dir();
+void show_status();
 
 
 int
@@ -69,7 +89,7 @@ change_directory(char *dir)
 	file_list.tail_idx = y - 3;
 	file_list.cur_idx = 0;
 
-	show_files(main_win, true);
+	show_files(main_win);
 	return (0);
 }
 
@@ -186,6 +206,10 @@ key_enter()
 	}
 
 	mvwprintw(status_win, 1, 5, "CMD: PLAY ");
+	pthread_mutex_lock(&ui_status_cache_mutex);
+	ui_status_cache = CMD_PLAY;
+	pthread_mutex_unlock(&ui_status_cache_mutex);
+
 	return (send_packet(sock_fd, cmd, ptr));
 }
 
@@ -197,7 +221,7 @@ key_down()
 	if (file_list.cur_idx < file_list.contents->amount -1 &&
 			file_list.cur_idx < file_list.tail_idx) {
 		file_list.cur_idx += 1;
-		show_files(main_win, false);
+		show_files(main_win);
 		return;
 	}
 
@@ -206,7 +230,7 @@ key_down()
 		file_list.cur_idx += 1;
 			file_list.head_idx += 1;
 			file_list.tail_idx += 1;
-			show_files(main_win, false);
+			show_files(main_win);
 	}
 }
 
@@ -217,7 +241,7 @@ key_up()
 	if (file_list.cur_idx > file_list.head_idx) {
 		file_list.cur_idx -= 1;
 		//file_list.tail_idx -= 1;
-		show_files(main_win, false);
+		show_files(main_win);
 		return;
 	}
 	if (file_list.cur_idx == file_list.head_idx &&
@@ -225,7 +249,7 @@ key_up()
 		file_list.head_idx -= 1;
 		file_list.tail_idx -= 1;
 		file_list.cur_idx -= 1;
-		show_files(main_win, false);
+		show_files(main_win);
 	}
 }
 
@@ -264,39 +288,56 @@ send_rev_command(int sock_fd)
 	return (send_packet(sock_fd, cmd, NULL));
 }
 
-WINDOW*
-prepare_main_window()
+void
+set_main_window_size()
 {
-	int w_height, w_width, w_starty = 0, w_startx = 0;
-
-	getmaxyx(stdscr, w_height, w_width);
-	WINDOW *win = newwin(w_height, w_width - 30, w_starty, w_startx);
-
-	init_pair(1, COLOR_RED, COLOR_GREEN);
-	attron(COLOR_PAIR(1));
-
-	wbkgd(win, COLOR_PAIR(1));
-	box(win, 0, 0);
-	attroff(COLOR_PAIR(1));
-	wrefresh(win);
-	return (win);
-}
-
-WINDOW*
-prepare_status_window()
-{
-	// screen size
 	int scr_height, scr_width;
-	// window size
-	int w_height, w_width, w_starty, w_startx;
+	struct window_dimensions *dimensions;
 
 	getmaxyx(stdscr, scr_height, scr_width);
 
-	w_height = scr_height;
-	w_width = 30;
-	w_starty = 0;
-	w_startx = scr_width - w_width;
-	WINDOW *win = newwin(w_height, w_width, w_starty, w_startx);
+	dimensions = main_win_dimensions;
+	dimensions->width = scr_width - status_win_width;
+	dimensions->height = scr_height;
+	dimensions->startx = 0;
+	dimensions->starty = 0;
+}
+
+void
+set_status_window_size()
+{
+	int scr_height, scr_width;
+	struct window_dimensions *dimensions;
+
+	getmaxyx(stdscr, scr_height, scr_width);
+
+	dimensions = status_win_dimensions;
+	dimensions->width = status_win_width; //30
+	dimensions->height = scr_height;
+	dimensions->startx = scr_width - status_win_width;
+	dimensions->starty = 0;
+}
+
+int
+prepare_main_window()
+{
+	struct window_dimensions *dimensions;
+	WINDOW *win;
+
+	dimensions = malloc(sizeof (struct window_dimensions));
+	if (!dimensions) {
+		return (-1);
+	}
+	main_win_dimensions = dimensions;
+
+	set_main_window_size();
+
+	win = newwin(dimensions->height, dimensions->width,
+		dimensions->starty, dimensions->startx);
+
+	if (!win) {
+		return (-1);
+	}
 
 	init_pair(1, COLOR_RED, COLOR_GREEN);
 	attron(COLOR_PAIR(1));
@@ -305,7 +346,42 @@ prepare_status_window()
 	box(win, 0, 0);
 	attroff(COLOR_PAIR(1));
 	wrefresh(win);
-	return (win);
+
+	main_win = win;
+	return (0);
+}
+
+int
+prepare_status_window()
+{
+	struct window_dimensions *dimensions;
+	WINDOW *win;
+
+	dimensions = malloc(sizeof (struct window_dimensions));
+	if (!dimensions) {
+		return (-1);
+	}
+	status_win_dimensions = dimensions;
+
+	set_status_window_size();
+
+	win = newwin(dimensions->height, dimensions->width,
+		dimensions->starty, dimensions->startx);
+
+	if (!win) {
+		return (-1);
+	}
+
+	init_pair(1, COLOR_RED, COLOR_GREEN);
+	attron(COLOR_PAIR(1));
+
+	wbkgd(win, COLOR_PAIR(1));
+	box(win, 0, 0);
+	attroff(COLOR_PAIR(1));
+	wrefresh(win);
+
+	status_win = win;
+	return (0);
 }
 
 int
@@ -343,11 +419,10 @@ get_client_socket()
 void
 received_status_stop()
 {
-	//int stdscr, w_height, w_width;
-	//getmaxyx(status_win, w_height, w_width);
-
-	mvwprintw(status_win, 1, 5, "STATUS_STOP\n");
-	wrefresh(status_win);
+	pthread_mutex_lock(&ui_status_cache_mutex);
+	ui_status_cache = STATUS_STOP;
+	pthread_mutex_unlock(&ui_status_cache_mutex);
+	show_status();
 }
 
 /*
@@ -435,6 +510,48 @@ ui_socket_receiver()
 }
 
 void
+show_status()
+{
+	info_t status;
+
+	pthread_mutex_lock(&ui_status_cache_mutex);
+	status = ui_status_cache;
+	pthread_mutex_unlock(&ui_status_cache_mutex);
+
+	switch (status) {
+	case STATUS_STOP:
+		mvwprintw(status_win, 1, 5, "STATUS_STOP");
+		break;
+	case CMD_PLAY:
+		mvwprintw(status_win, 1, 5, "CMD_PLAY  ");
+		break;
+	default:
+		;;
+	}
+	wrefresh(status_win);
+}
+
+void
+resize_windows()
+{
+	struct window_dimensions *dimensions;
+
+	set_main_window_size();
+	dimensions = main_win_dimensions;
+	wresize(main_win, dimensions->height, dimensions->width);
+	show_files(main_win);
+
+	set_status_window_size();
+	dimensions = status_win_dimensions;
+	wresize(status_win, dimensions->height, dimensions->width);
+	mvwin(status_win, dimensions->starty, dimensions->startx);
+	wclear(status_win);
+	box(status_win, 0, 0);
+	show_status();
+	wrefresh(status_win);
+}
+
+void
 curses_loop()
 {
 	int key, w_height, w_width;
@@ -483,6 +600,10 @@ curses_loop()
 			// UP - scroll files
 			key_up();
 			break;
+		//case 410:
+		case KEY_RESIZE:
+			resize_windows();
+			break;
 		default:
 			mvwprintw(status_win, 10, 1, "pressed:");
 			mvwprintw(status_win, 11, 1, "%3d as '%c'", key, key);
@@ -493,17 +614,21 @@ curses_loop()
 }
 
 void
-show_files(WINDOW *w, bool clear)
+show_files(WINDOW *w)
 {
-	int index, y_pos, win_y, win_x;
+	int index, y_pos, win_y, win_x, offset, old_lines;
 	struct dir_contents *contents;
 
 	contents = file_list.contents;
 	getmaxyx(w, win_y, win_x);
 
-	if (clear)
-		wclear(w);
-		box(w, 0, 0);
+	wclear(w);
+	box(w, 0, 0);
+
+	// TODO: handle window resize
+	old_lines = file_list.tail_idx - 3 - file_list.head_idx;
+	offset = file_list.cur_idx - file_list.head_idx;
+
 
 	// show directory name
 	// TODO: cut if longer
@@ -535,41 +660,63 @@ ui_cleanup()
 	close(sock_fd);
 
 	delwin(main_win);
+	free(main_win_dimensions);
+
 	delwin(status_win);
+	free(status_win_dimensions);
+
 	endwin();
 }
 
-void
+int
 ui_init()
 {
-	initscr();
+	int err;
+
+	if (initscr() == NULL) {
+		return (-1);
+	}
+
 	noecho();
 
 	// invisible cursor
 	curs_set(0);
 
-	main_win = prepare_main_window();
-	status_win = prepare_status_window();
+	err = prepare_main_window();
+	if (err == -1) {
+		return (-1);
+	}
+
+	err = prepare_status_window();
+	if (err == -1) {
+		return (-1);
+	}
+
+	return (0);
 }
 
 
-void
+int
 curses_ui()
 {
 	int err;
-	ui_init();
+
+	err = ui_init();
+	if (err == -1) {
+		return (-1);
+	}
 
 	file_list.dir_name = malloc(MAXPATHLEN + 1);
 	if (!file_list.dir_name) {
 		mvwprintw(main_win, 0, 1, "ERROR: Can't initialize dir_name.");
 		wrefresh(main_win);
-		return;
+		return (-1);
 	}
 	err = first_run_file_list(main_win);
 	if (err == -1) {
 		mvwprintw(main_win, 0, 1, "ERROR: Can't initialize file list.");
 		wrefresh(main_win);
-		return;
+		return (-1);
 	}
 
 	sock_fd = get_client_socket();
@@ -578,13 +725,15 @@ curses_ui()
 	if (err != 0) {
 		mvwprintw(main_win, 0, 1, "ERROR: receiver thread");
 		wrefresh(main_win);
+		return (-1);
 	}
 
-	show_files(main_win, false);
+	show_files(main_win);
 	curses_loop();
 
 	free_dir_list();
 	free(file_list.dir_name);
 
 	ui_cleanup();
+	return (0);
 }
