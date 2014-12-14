@@ -479,6 +479,7 @@ show_files(WINDOW *w, bool clear)
 
 	if (clear)
 		wclear(w);
+		box(w, 0, 0);
 
 	index = file_list.head_idx;
 
