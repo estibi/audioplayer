@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <sys/param.h>
 
 #include "protocol.h"
 #include "utils.h"
@@ -11,6 +12,7 @@ WINDOW *main_win, *status_win;
 
 struct ui_file_list {
 	struct dir_contents *contents;
+	char *dir_name;
 	// first file to show
 	unsigned int head_idx;
 	// last file to show
@@ -38,6 +40,12 @@ change_directory(char *dir)
 		mvwprintw(status_win, 3, 1, "can't change dir: %s", dir);
 		return (-1);
 	}
+
+	if (getcwd(file_list.dir_name, MAXPATHLEN) == 0) {
+		mvwprintw(status_win, 3, 1, "can't get current directory");
+		return (-1);
+	}
+
 	// reset cursor/file position after changing directory
 	file_list.cur_idx = 0;
 
@@ -120,6 +128,11 @@ first_run_file_list(WINDOW *w)
 	int y, x, err;
 
 	if (init_list_for_dir(".") == -1) {
+		return (-1);
+	}
+
+	if (getcwd(file_list.dir_name, MAXPATHLEN) == 0) {
+		mvwprintw(status_win, 3, 1, "can't get current directory");
 		return (-1);
 	}
 
@@ -327,6 +340,16 @@ get_client_socket()
 	}
 }
 
+void
+received_status_stop()
+{
+	//int stdscr, w_height, w_width;
+	//getmaxyx(status_win, w_height, w_width);
+
+	mvwprintw(status_win, 1, 5, "STATUS_STOP\n");
+	wrefresh(status_win);
+}
+
 /*
  * Thread - receives status packets from audio engine.
  */
@@ -364,7 +387,8 @@ ui_socket_receiver()
 		if (host_pkt_hdr.size > 0) {
 			str_buf = malloc(host_pkt_hdr.size);
 			if (!str_buf) {
-				printw("ERROR: malloc error: %s\n", strerror(errno));
+				printw("ERROR: ui_socket_receiver() - malloc error: %s\n",
+					strerror(errno));
 				break;
 			}
 			has_content = true;
@@ -388,8 +412,7 @@ ui_socket_receiver()
 
 		switch (host_pkt_hdr.info) {
 		case STATUS_STOP:
-			mvwprintw(status_win, 1, 5, "STATUS_STOP\n");
-			wrefresh(status_win);
+			received_status_stop();
 			break;
 		default:
 			;;
@@ -414,12 +437,14 @@ ui_socket_receiver()
 void
 curses_loop()
 {
-	int key;
+	int key, w_height, w_width;
+
 	notimeout(main_win, true);
 
 	for (;;) {
-		mvwprintw(main_win, 0, 1, "press p to play, s to stop, q to quit..");
-		wrefresh(main_win);
+		getmaxyx(status_win, w_height, w_width);
+		mvwprintw(status_win, w_height - 2 , 1, "p - play, s - stop, q - quit");
+		wrefresh(status_win);
 
 		key = wgetch(main_win);
 		switch (key) {
@@ -480,6 +505,10 @@ show_files(WINDOW *w, bool clear)
 		wclear(w);
 		box(w, 0, 0);
 
+	// show directory name
+	// TODO: cut if longer
+	mvwprintw(w, 0, 1, "%s", file_list.dir_name);
+
 	index = file_list.head_idx;
 
 	y_pos = 1;
@@ -515,6 +544,10 @@ ui_init()
 {
 	initscr();
 	noecho();
+
+	// invisible cursor
+	curs_set(0);
+
 	main_win = prepare_main_window();
 	status_win = prepare_status_window();
 }
@@ -526,6 +559,12 @@ curses_ui()
 	int err;
 	ui_init();
 
+	file_list.dir_name = malloc(MAXPATHLEN + 1);
+	if (!file_list.dir_name) {
+		mvwprintw(main_win, 0, 1, "ERROR: Can't initialize dir_name.");
+		wrefresh(main_win);
+		return;
+	}
 	err = first_run_file_list(main_win);
 	if (err == -1) {
 		mvwprintw(main_win, 0, 1, "ERROR: Can't initialize file list.");
@@ -545,5 +584,7 @@ curses_ui()
 	curses_loop();
 
 	free_dir_list();
+	free(file_list.dir_name);
+
 	ui_cleanup();
 }

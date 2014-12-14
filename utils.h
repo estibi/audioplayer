@@ -1,3 +1,12 @@
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #define	NAME_MAX 255
 
 typedef enum {
@@ -12,8 +21,8 @@ typedef struct fileobj_t {
 } fileobj;
 
 struct dir_contents {
-	fileobj **list;
 	unsigned int amount;
+	fileobj **list;
 };
 
 
