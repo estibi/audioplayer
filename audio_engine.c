@@ -40,10 +40,19 @@ void *sender_arg = NULL;
 
 
 volatile info_t audio_cmd;
-
 pthread_mutex_t audio_cmd_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// for event notifications
 pthread_mutex_t ao_event_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t ao_event = PTHREAD_COND_INITIALIZER;
+
+
+volatile info_t audio_status;
+pthread_mutex_t audio_status_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// for event notifications
+pthread_mutex_t status_event_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t status_event = PTHREAD_COND_INITIALIZER;
 
 // used by audio thread
 int *buffer;
@@ -96,15 +105,27 @@ engine_daemon()
 void *
 engine_socket_sender()
 {
-	int len, x;
+	int err;
+	info_t status_copy;
 
 	for (;;) {
-		len = write(conn_fd, &x, sizeof (x));
-		logger("socket_sender: sent %d bytes\n", len);
-		if (len == -1) {
-			logger("socket_sender: %s\n", strerror(errno));
+		pthread_mutex_lock(&status_event_mutex);
+		// waiting for an event
+		if (pthread_cond_wait(&status_event, &status_event_mutex) != 0) {
+			logger("ERROR: pthread_cond_wait in engine_socket_sender()\n");
 		}
-		sleep(5);
+		pthread_mutex_unlock(&status_event_mutex);
+
+		// read status variable
+		pthread_mutex_lock(&audio_status_mutex);
+		status_copy = audio_status;
+		pthread_mutex_unlock(&audio_status_mutex);
+
+		// send audio status to UI
+		err = send_packet(conn_fd, status_copy, NULL);
+		if (err == -1) {
+			logger("ERROR: send_packet failed\n");
+		}
 	}
 }
 
@@ -177,6 +198,25 @@ open_audio_device()
 	return (0);
 }
 
+void
+notify_ui_eof()
+{
+	int ret;
+
+	// set STATUS_STOP for packet sender
+	pthread_mutex_lock(&audio_status_mutex);
+	audio_status = STATUS_STOP;
+	pthread_mutex_unlock(&audio_status_mutex);
+
+	// send event signal to packet sender
+	pthread_mutex_lock(&status_event_mutex);
+	ret = pthread_cond_signal(&status_event);
+	if (ret != 0) {
+		logger("ERROR: pthread_cond_signal: %d\n", ret);
+	}
+	pthread_mutex_unlock(&status_event_mutex);
+}
+
 /*
  * This is an audio I/O thread.
  */
@@ -213,13 +253,18 @@ ao_play_file()
 		logger("read_cnt: %d\n", read_cnt);
 		if ((int)count == 0) {
 			// end of file
+			notify_ui_eof();
 			pthread_mutex_lock(&audio_cmd_mutex);
 			audio_cmd = CMD_STOP;
 			pthread_exit(NULL);
 		}
 		if (count < buf_len) {
 			if (count <= play_chunk) {
+				// play the rest of the buffer
 				ao_play(device, (char *)buffer, count);
+				notify_ui_eof();
+
+				// exit this thread
 				pthread_mutex_lock(&audio_cmd_mutex);
 				audio_cmd = CMD_STOP;
 				pthread_exit(NULL);
@@ -299,6 +344,7 @@ ao_play_file()
 				logger("play_chunk: %d\n", play_chunk);
 				logger("bufp - (char *)buffer: %d\n", bufp - (char *)buffer);
 				if (bufp - (char *)buffer >= count) {
+					notify_ui_eof();
 					break;
 				}
 			}
@@ -425,7 +471,7 @@ init_network()
 	memset(&addr, 0, sizeof (addr));
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-	addr.sin_port = htons(10000);
+	addr.sin_port = htons(DAEMON_PORT);
 
 	logger("socket_daemon - socket()\n");
 	sock_fd = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);

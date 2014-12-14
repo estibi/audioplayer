@@ -304,7 +304,7 @@ get_client_socket()
 	memset(&addr, 0, sizeof (addr));
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-	addr.sin_port = htons(10000);
+	addr.sin_port = htons(DAEMON_PORT);
 
 	sock_fd = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);
 	if (!sock_fd) {
@@ -313,7 +313,7 @@ get_client_socket()
 	}
 
 	// FIXME: waiting for a server (audio daemon)
-	sleep(1);
+	sleep(2);
 
 	for (;;) {
 		err = connect(sock_fd, (struct sockaddr *)&addr, sizeof (addr));
@@ -334,18 +334,80 @@ void *
 ui_socket_receiver()
 {
 	int len;
-	unsigned int str_size, buf_size, x;
-	char *buf[256];
+	char *str_buf;
+	bool has_content = false;
+
+	struct pkt_header pkt_hdr, host_pkt_hdr;
+	host_pkt_hdr.info = CMD_UNKNOWN;
 
 	for (;;) {
-		len = read(sock_fd, buf, sizeof (x));
-		if (len == -1) {
-			printw("ERROR ui_socket_receiver: %s\n", strerror(errno));
-			refresh();
-			sleep(1);
+		len = read(sock_fd, &pkt_hdr, sizeof (pkt_hdr));
+
+		//printw("read %d bytes from socket\n", len);
+		if (len == 0) {
+			printw("ERROR: - connection closed (initial read)\n");
+			break;
 		}
-		//printw("ui_socket_receiver: %d", len);
+		if (len < sizeof (pkt_hdr)) {
+			printw("ERROR: - received less bytes from socket\n");
+			break;
+		}
+
+		host_pkt_hdr.info = ntohl(pkt_hdr.info);
+		host_pkt_hdr.size = ntohl(pkt_hdr.size);
+		//printw("receiver host_pkg_hdr.info: %d\n",
+		//	(unsigned int)host_pkt_hdr.info);
+		//printw("receiver host_pkg_hdr.size: %d\n",
+		//	(unsigned int)host_pkt_hdr.size);
 		//refresh();
+
+		if (host_pkt_hdr.size > 0) {
+			str_buf = malloc(host_pkt_hdr.size);
+			if (!str_buf) {
+				printw("ERROR: malloc error: %s\n", strerror(errno));
+				break;
+			}
+			has_content = true;
+
+			len = read(sock_fd, str_buf, host_pkt_hdr.size);
+			if (len == 0) {
+				printw("ERROR: socket_daemon() - connection closed\n");
+				break;
+			} else if (len < sizeof (str_buf)) {
+				printw("ERROR: read less then buffer\n");
+				break;
+			}
+		} else {
+			has_content = false;
+		}
+
+		//printw("received command: %d\n", host_pkt_hdr.info);
+		if (has_content) {
+			printw("received string: %s\n", str_buf);
+		}
+
+		switch (host_pkt_hdr.info) {
+		case STATUS_STOP:
+			mvwprintw(status_win, 1, 5, "STATUS_STOP\n");
+			wrefresh(status_win);
+			break;
+		default:
+			;;
+		}
+		if (has_content) {
+			free(str_buf);
+			has_content = false;
+		}
+	}
+	refresh();
+	// TODO
+	// we are here if error occurred
+	if (has_content) {
+		free(str_buf);
+		has_content = false;
+	}
+	for (;;) {
+		sleep(120);
 	}
 }
 

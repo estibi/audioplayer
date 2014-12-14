@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#define	DAEMON_PORT 10000
 
 typedef enum {
 	CMD_UNKNOWN,
