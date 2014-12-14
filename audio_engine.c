@@ -57,11 +57,11 @@ static int sock_fd, conn_fd;
 
 void stop_command();
 void quit_command();
-int socket_daemon_loop();
+int engine_socket_receiver();
 int signal_cond_event();
 int get_connection_fd();
 int init_network();
-void *socket_sender();
+void *engine_socket_sender();
 
 int
 engine_daemon()
@@ -83,19 +83,23 @@ engine_daemon()
 	ao_initialize();
 	default_driver = ao_default_driver_id();
 
-	err = pthread_create(&sender_thread, sender_attr, socket_sender, sender_arg);
+	err = pthread_create(&sender_thread, sender_attr,
+		engine_socket_sender, sender_arg);
 	if (err != 0) {
 		logger("ERROR: sender thread");
 	}
 
-	err = socket_daemon_loop();
+	err = engine_socket_receiver();
 	ao_shutdown();
 
 	return (err);
 }
 
+/*
+ * Thread - sends audio status to UI.
+ */
 void *
-socket_sender()
+engine_socket_sender()
 {
 	int len, x;
 
@@ -473,7 +477,7 @@ get_connection_fd()
  * Receives commands from ui using socket connection.
  */
 int
-socket_daemon_loop()
+engine_socket_receiver()
 {
 	int len;
 	char *str_buf;

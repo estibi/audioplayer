@@ -390,8 +390,11 @@ get_client_socket()
 	}
 }
 
+/*
+ * Thread - receives status packets from audio engine.
+ */
 void *
-socket_receiver()
+ui_socket_receiver()
 {
 	int len;
 	unsigned int str_size, buf_size, x;
@@ -400,11 +403,11 @@ socket_receiver()
 	for (;;) {
 		len = read(sock_fd, buf, sizeof (x));
 		if (len == -1) {
-			printw("ERROR socket_receiver: %s\n", strerror(errno));
+			printw("ERROR ui_socket_receiver: %s\n", strerror(errno));
 			refresh();
 			sleep(1);
 		}
-		//printw("socket_receiver: %d", len);
+		//printw("ui_socket_receiver: %d", len);
 		//refresh();
 	}
 }
@@ -532,7 +535,7 @@ curses_ui()
 
 	sock_fd = get_client_socket();
 
-	err = pthread_create(&receiver_thread, rcv_attr, socket_receiver, rcv_arg);
+	err = pthread_create(&receiver_thread, rcv_attr, ui_socket_receiver, rcv_arg);
 	if (err != 0) {
 		mvwprintw(main_win, 0, 1, "ERROR: receiver thread");
 		wrefresh(main_win);
