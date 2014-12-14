@@ -10,7 +10,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "audio_engine.h"
+#include "protocol.h"
 #include "utils.h"
 
 int sock_fd;
