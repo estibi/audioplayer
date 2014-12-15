@@ -611,49 +611,80 @@ curses_loop()
 }
 
 void
-show_files(WINDOW *w)
+handle_resize(WINDOW *w)
 {
-	int offset, diff;
-	unsigned int idx, y_pos, win_y, win_x, old_lines, new_lines;
+	unsigned int win_y, win_x, old_lines, new_lines, diff, files_amt;
 	struct dir_contents *contents;
 
 	contents = file_list.contents;
+	files_amt = contents->amount;
+
+	getmaxyx(w, win_y, win_x);
+
+	old_lines = file_list.tail_idx - file_list.head_idx;
+	new_lines = win_y - 3;
+
+	mvwprintw(status_win, 10, 1, "new_lines %d   ", new_lines);
+	mvwprintw(status_win, 11, 1, "old_lines %d   ", old_lines);
+	mvwprintw(status_win, 12, 1, "head %d cur %d tail %d   ",
+		file_list.head_idx, file_list.cur_idx, file_list.tail_idx);
+	mvwprintw(status_win, 13, 1, "all files %d", files_amt);
+	wrefresh(status_win);
+
+	// FIXME - WIP
+
+	// screen bigger then files available
+	if (new_lines >= files_amt) {
+		file_list.head_idx = 0;
+		file_list.tail_idx = files_amt - 1;
+		return;
+	}
+
+	// bigger screen
+	if (new_lines > old_lines) {
+		diff = new_lines - old_lines;
+		mvwprintw(status_win, 13, 20, "diff %d   ", diff);
+		wrefresh(status_win);
+		if (file_list.tail_idx + diff < files_amt - 1) {
+			file_list.tail_idx += diff;
+		}
+		if (file_list.tail_idx + diff >= files_amt - 1) {
+			file_list.head_idx = 0;
+			file_list.tail_idx = files_amt - 1;
+		}
+		return;
+	}
+
+	// smaller
+	if (new_lines < old_lines) {
+		diff = old_lines - new_lines;
+		mvwprintw(status_win, 13, 20, "diff %d   ", diff);
+		wrefresh(status_win);
+		if (file_list.cur_idx + diff <= new_lines) {
+			// cursor in the middle, just decrease a tail
+			file_list.tail_idx = new_lines;
+		} else {
+			file_list.tail_idx = file_list.cur_idx;
+			file_list.head_idx += diff;
+		}
+	}
+}
+
+void
+show_files(WINDOW *w)
+{
+	unsigned int idx, y_pos, win_y, win_x, files_amt;
+	struct dir_contents *contents;
+
+	contents = file_list.contents;
+	files_amt = contents->amount;
+
 	getmaxyx(w, win_y, win_x);
 
 	wclear(w);
 	box(w, 0, 0);
 
-	// TODO: handle window resize
-	old_lines = file_list.tail_idx - file_list.head_idx;
-	new_lines = win_y - 3;
-	offset = file_list.cur_idx - file_list.head_idx;
-
-	mvwprintw(status_win, 10, 1, "new_lines %d", new_lines);
-	mvwprintw(status_win, 11, 1, "old_lines %d", old_lines);
-	mvwprintw(status_win, 12, 1, "head %d cur %d tail %d",
-		file_list.head_idx, file_list.cur_idx, file_list.tail_idx);
-	wrefresh(status_win);
-
-	// FIXME
-	if (new_lines > old_lines) {		// bigger terminal
-		diff = new_lines - old_lines;
-		file_list.head_idx += diff;
-		file_list.tail_idx += diff;
-	} else if (new_lines < old_lines) {	// smaller terminal
-		diff = old_lines - new_lines;
-		if (file_list.cur_idx + diff <= new_lines) {
-			// cursor in the middle, just decrease a tail
-			file_list.tail_idx = new_lines;
-		} else {
-			file_list.tail_idx -= (old_lines - new_lines);
-			file_list.head_idx += (old_lines - new_lines);
-			if (file_list.cur_idx > file_list.tail_idx) {
-				diff = file_list.cur_idx - file_list.tail_idx;
-				file_list.tail_idx = file_list.cur_idx;
-				file_list.head_idx += diff - 1;
-			}
-		}
-	}
+	handle_resize(w);
 
 	// show directory name
 	// TODO: cut path if too long
