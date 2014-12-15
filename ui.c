@@ -401,9 +401,6 @@ get_client_socket()
 		refresh();
 	}
 
-	// FIXME: waiting for a server (audio daemon)
-	sleep(2);
-
 	for (;;) {
 		err = connect(sock_fd, (struct sockaddr *)&addr, sizeof (addr));
 		if (err == 0) {
@@ -616,7 +613,7 @@ curses_loop()
 void
 show_files(WINDOW *w)
 {
-	int index, y_pos, win_y, win_x, offset, old_lines;
+	int idx, y_pos, win_y, win_x, offset, old_lines, new_lines, diff;
 	struct dir_contents *contents;
 
 	contents = file_list.contents;
@@ -626,28 +623,55 @@ show_files(WINDOW *w)
 	box(w, 0, 0);
 
 	// TODO: handle window resize
-	old_lines = file_list.tail_idx - 3 - file_list.head_idx;
+	old_lines = file_list.tail_idx - file_list.head_idx;
+	new_lines = win_y - 3;
 	offset = file_list.cur_idx - file_list.head_idx;
 
+	mvwprintw(status_win, 10, 1, "new_lines %d", new_lines);
+	mvwprintw(status_win, 11, 1, "old_lines %d", old_lines);
+	mvwprintw(status_win, 12, 1, "head %d cur %d tail %d",
+		file_list.head_idx, file_list.cur_idx, file_list.tail_idx);
+	wrefresh(status_win);
+
+	// FIXME
+	if (new_lines > old_lines) {		// bigger terminal
+		diff = new_lines - old_lines;
+		file_list.head_idx += diff;
+		file_list.tail_idx += diff;
+	} else if (new_lines < old_lines) {	// smaller terminal
+		diff = old_lines - new_lines;
+		if (file_list.cur_idx + diff <= new_lines) {
+			// cursor in the middle, just decrease a tail
+			file_list.tail_idx = new_lines;
+		} else {
+			file_list.tail_idx -= (old_lines - new_lines);
+			file_list.head_idx += (old_lines - new_lines);
+			if (file_list.cur_idx > file_list.tail_idx) {
+				diff = file_list.cur_idx - file_list.tail_idx;
+				file_list.tail_idx = file_list.cur_idx;
+				file_list.head_idx += diff - 1;
+			}
+		}
+	}
 
 	// show directory name
 	// TODO: cut if longer
 	mvwprintw(w, 0, 1, "%s", file_list.dir_name);
 
-	index = file_list.head_idx;
+	idx = file_list.head_idx;
 
 	y_pos = 1;
 
-	for (; index < contents->amount; index++) {
-		if (index > file_list.tail_idx)
+	for (; idx < contents->amount; idx++) {
+		if (idx > file_list.tail_idx)
 			break;
 		// clear a line with spaces
 		mvwprintw(w, y_pos, 1, "%*s", win_x - 2, " ");
 
-		if (file_list.cur_idx == index) {
-			mvwprintw(w, y_pos, 1, "%s  <--", &contents->list[index]->name);
+		if (file_list.cur_idx == idx) {
+			mvwprintw(w, y_pos, 1, "%s  <--", &contents->list[idx]->name);
 		} else {
-			mvwprintw(w, y_pos, 1, "%s", &contents->list[index]->name);
+			mvwprintw(w, y_pos, 1, "%s", &contents->list[idx]->name);
 		}
 		y_pos++;
 	}

@@ -71,16 +71,32 @@ int
 engine_daemon()
 {
 	int err;
+	pid_t ppid;
 
 	logger("########################################\n");
 	logger("engine_daemon()\n");
 
 	sock_fd = init_network();
 	if (!sock_fd) {
+		logger("ERROR: init_network()\n");
 		return (-1);
 	}
+
+	// network is initialized, notify parent
+	ppid = getppid();
+	logger("ppid: %d\n", ppid);
+
+	err = kill(ppid, SIGUSR1);
+	if (err == -1) {
+		logger("ERROR: can't send SIGUSR1 to the parent\n");
+		// TODO
+		ao_shutdown();
+		return (err);
+	}
+
 	conn_fd = get_connection_fd();
 	if (conn_fd == -1) {
+		logger("ERROR: get_connection_fd()\n");
 		return (-1);
 	}
 
@@ -463,8 +479,7 @@ pause_command()
 int
 init_network()
 {
-	int sock_fd, err;
-	//int err;
+	int i, err, sock_fd;
 	struct sockaddr_in addr;
 	int in_queue = 5;
 
@@ -481,11 +496,19 @@ init_network()
 	}
 
 	logger("socket_daemon - bind()\n");
-	err = bind(sock_fd, (struct sockaddr *)&addr, sizeof (addr));
-	if (err) {
+	// use loop to avoid 'Address already in use' bind error
+	for (i = 0;; i++) {
+		err = bind(sock_fd, (struct sockaddr *)&addr, sizeof (addr));
+		if (err == 0)
+			break;
+
+		if (i == 15) {
+			close(sock_fd);
+			return (0);
+		}
+
 		logger("ERROR: bind error: %s\n", strerror(errno));
-		close(sock_fd);
-		return (0);
+		sleep(3);
 	}
 
 	logger("socket_daemon - listen()\n");

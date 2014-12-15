@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,12 +35,40 @@ init_audio_engine()
 	exit(1);
 }
 
+void
+handler(int signal)
+{
+	switch (signal) {
+	case SIGUSR1:
+	printf("received SIGUSR1..\n");
+		break;
+	default:
+		;;
+	}
+}
+
 int
 main(int argc, char *argv[])
 {
 	int daemon_pid, status, err;
+	struct sigaction sa;
+
+	sa.sa_handler = &handler;
+	sa.sa_flags = SA_RESTART;
+	err = sigaction(SIGUSR1, &sa, NULL);
+	if (err == -1) {
+		printf("sigaction error:\n");
+		printf("%s\n", strerror(errno));
+		return (-1);
+	}
+
 	daemon_pid = init_audio_engine();
 
+	printf("waiting for audio engine..\n");
+	// TODO: handle child exit
+	pause();
+
+	printf("starting curses..\n");
 	err = curses_ui();
 
 	// wait for audio engine
