@@ -602,8 +602,8 @@ curses_loop()
 			resize_windows();
 			break;
 		default:
-			mvwprintw(status_win, 10, 1, "pressed:");
-			mvwprintw(status_win, 11, 1, "%3d as '%c'", key, key);
+			mvwprintw(status_win, 5, 1, "pressed:");
+			mvwprintw(status_win, 6, 1, "%3d as '%c'", key, key);
 			break;
 		}
 		wrefresh(status_win);
@@ -613,7 +613,8 @@ curses_loop()
 void
 show_files(WINDOW *w)
 {
-	int idx, y_pos, win_y, win_x, offset, old_lines, new_lines, diff;
+	int offset, diff;
+	unsigned int idx, y_pos, win_y, win_x, old_lines, new_lines;
 	struct dir_contents *contents;
 
 	contents = file_list.contents;
@@ -655,7 +656,7 @@ show_files(WINDOW *w)
 	}
 
 	// show directory name
-	// TODO: cut if longer
+	// TODO: cut path if too long
 	mvwprintw(w, 0, 1, "%s", file_list.dir_name);
 
 	idx = file_list.head_idx;
