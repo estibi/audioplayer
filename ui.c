@@ -49,6 +49,8 @@ void show_files(WINDOW *w);
 void free_dir_list();
 int init_list_for_dir();
 void show_status();
+void handle_resize(WINDOW *w);
+
 
 
 int
@@ -218,14 +220,14 @@ void
 key_down()
 {
 	// DOWN - scroll files
-	if (file_list.cur_idx < file_list.contents->amount -1 &&
+	if (file_list.cur_idx < file_list.contents->amount - 1 &&
 			file_list.cur_idx < file_list.tail_idx) {
 		file_list.cur_idx += 1;
 		show_files(main_win);
 		return;
 	}
 
-	if (file_list.cur_idx < file_list.contents->amount -1 &&
+	if (file_list.cur_idx < file_list.contents->amount - 1 &&
 			file_list.cur_idx == file_list.tail_idx) {
 		file_list.cur_idx += 1;
 			file_list.head_idx += 1;
@@ -533,11 +535,6 @@ resize_windows()
 {
 	struct window_dimensions *dimensions;
 
-	set_main_window_size();
-	dimensions = main_win_dimensions;
-	wresize(main_win, dimensions->height, dimensions->width);
-	show_files(main_win);
-
 	set_status_window_size();
 	dimensions = status_win_dimensions;
 	wresize(status_win, dimensions->height, dimensions->width);
@@ -546,6 +543,12 @@ resize_windows()
 	box(status_win, 0, 0);
 	show_status();
 	wrefresh(status_win);
+
+	set_main_window_size();
+	dimensions = main_win_dimensions;
+	wresize(main_win, dimensions->height, dimensions->width);
+	handle_resize(main_win);
+	show_files(main_win);
 }
 
 void
@@ -602,8 +605,8 @@ curses_loop()
 			resize_windows();
 			break;
 		default:
-			mvwprintw(status_win, 5, 1, "pressed:");
-			mvwprintw(status_win, 6, 1, "%3d as '%c'", key, key);
+			mvwprintw(status_win, 10, 1, "pressed:");
+			mvwprintw(status_win, 11, 1, "%3d as '%c'", key, key);
 			break;
 		}
 		wrefresh(status_win);
@@ -624,19 +627,21 @@ handle_resize(WINDOW *w)
 	old_lines = file_list.tail_idx - file_list.head_idx;
 	new_lines = win_y - 3;
 
-	mvwprintw(status_win, 10, 1, "new_lines %d   ", new_lines);
-	mvwprintw(status_win, 11, 1, "old_lines %d   ", old_lines);
-	mvwprintw(status_win, 12, 1, "head %d cur %d tail %d   ",
+	mvwprintw(status_win, 3, 1, "new_lines %d   ", new_lines);
+	mvwprintw(status_win, 4, 1, "old_lines %d   ", old_lines);
+	mvwprintw(status_win, 5, 1, "head %d cur %d tail %d   ",
 		file_list.head_idx, file_list.cur_idx, file_list.tail_idx);
-	mvwprintw(status_win, 13, 1, "all files %d", files_amt);
+	mvwprintw(status_win, 6, 1, "all files %d", files_amt);
 	wrefresh(status_win);
 
-	// FIXME - WIP
+	// TODO: refactor this function and remove dead code
 
 	// screen bigger then files available
 	if (new_lines >= files_amt) {
 		file_list.head_idx = 0;
 		file_list.tail_idx = files_amt - 1;
+		mvwprintw(status_win, 0, 1, "CASE 3   ");
+		wrefresh(status_win);
 		return;
 	}
 
@@ -645,12 +650,20 @@ handle_resize(WINDOW *w)
 		diff = new_lines - old_lines;
 		mvwprintw(status_win, 13, 20, "diff %d   ", diff);
 		wrefresh(status_win);
-		if (file_list.tail_idx + diff < files_amt - 1) {
+		if (file_list.tail_idx + 1 + diff < files_amt) {
 			file_list.tail_idx += diff;
+			mvwprintw(status_win, 0, 1, "CASE 4-1  ");
+			wrefresh(status_win);
 		}
-		if (file_list.tail_idx + diff >= files_amt - 1) {
-			file_list.head_idx = 0;
-			file_list.tail_idx = files_amt - 1;
+		// TODO: refactor this
+		if (file_list.tail_idx + 1 + diff >= files_amt) {
+			if (file_list.tail_idx - file_list.cur_idx < new_lines) {
+				if (file_list.head_idx > 0) {
+					file_list.head_idx -= diff;
+				}
+				mvwprintw(status_win, 0, 1, "CASE 4-2-1  ");
+				wrefresh(status_win);
+			}
 		}
 		return;
 	}
@@ -660,12 +673,47 @@ handle_resize(WINDOW *w)
 		diff = old_lines - new_lines;
 		mvwprintw(status_win, 13, 20, "diff %d   ", diff);
 		wrefresh(status_win);
-		if (file_list.cur_idx + diff <= new_lines) {
-			// cursor in the middle, just decrease a tail
-			file_list.tail_idx = new_lines;
-		} else {
+		if (file_list.cur_idx - file_list.head_idx > new_lines) {
 			file_list.tail_idx = file_list.cur_idx;
+			file_list.head_idx = file_list.tail_idx - new_lines;
+			mvwprintw(status_win, 0, 1, "CASE 5-1   ");
+			wrefresh(status_win);
+			return;
+		}
+		if (file_list.tail_idx - file_list.cur_idx < new_lines) {
+			file_list.head_idx = file_list.tail_idx - new_lines;
+			mvwprintw(status_win, 0, 1, "CASE 5-2   ");
+			wrefresh(status_win);
+			return;
+		}
+
+		if (file_list.cur_idx < new_lines) {
+			file_list.tail_idx = file_list.head_idx + new_lines;
+			mvwprintw(status_win, 0, 1, "CASE 5   ");
+			wrefresh(status_win);
+			return;
+		}
+
+		if (file_list.cur_idx >= new_lines) {
+			file_list.tail_idx = file_list.cur_idx;
+			file_list.head_idx = file_list.cur_idx - new_lines;
+			mvwprintw(status_win, 0, 1, "CASE 5-3   ");
+			wrefresh(status_win);
+			return;
+		}
+
+		// TODO: probably dead code
+		if (file_list.cur_idx + 1 == new_lines) {
+			file_list.tail_idx = file_list.cur_idx + diff + 1;
 			file_list.head_idx += diff;
+			mvwprintw(status_win, 0, 1, "CASE 6   ");
+			wrefresh(status_win);
+		}
+		// TODO: probably dead code
+		if (file_list.cur_idx + diff == new_lines - 1) {
+			file_list.tail_idx = file_list.cur_idx + diff + 1;
+			mvwprintw(status_win, 0, 1, "CASE 7   ");
+			wrefresh(status_win);
 		}
 	}
 }
@@ -683,8 +731,6 @@ show_files(WINDOW *w)
 
 	wclear(w);
 	box(w, 0, 0);
-
-	handle_resize(w);
 
 	// show directory name
 	// TODO: cut path if too long
