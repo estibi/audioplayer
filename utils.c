@@ -41,7 +41,7 @@ count_dir_entries(char *dir_path)
 }
 
 int
-scan_dir(struct dir_contents *contents)
+scan_dir(struct dir_contents *contents, bool hidden, bool unsupported)
 {
 	int index = 0;
 	int amount = contents->amount;

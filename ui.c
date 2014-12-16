@@ -78,7 +78,7 @@ change_directory(char *dir)
 	init_list_for_dir();
 
 	//populate list with file/directory names
-	err = scan_dir(file_list.contents);
+	err = scan_dir(file_list.contents, false, false);
 	if (err == -1) {
 		mvwprintw(status_win, 1, 1, "ERROR in change_directory()");
 		wrefresh(status_win);
@@ -158,7 +158,7 @@ first_run_file_list(WINDOW *w)
 		return (-1);
 	}
 
-	err = scan_dir(file_list.contents);
+	err = scan_dir(file_list.contents, false, false);
 	if (err == -1) {
 		mvwprintw(w, 1, 1, "ERROR - CAN'T LOAD FILES");
 		wrefresh(w);

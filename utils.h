@@ -27,6 +27,6 @@ struct dir_contents {
 
 
 void show_dir_content(struct dir_contents *contents);
-int scan_dir(struct dir_contents *contents);
+int scan_dir(struct dir_contents *contents, bool hidden, bool unsupported);
 bool is_directory(char *file);
 int count_dir_entries(char *dir_path);
