@@ -9,6 +9,15 @@
 
 #define	NAME_MAX 255
 
+static const int supported_files_num = 4;
+static const char *supported_files[] = {
+    "aiff",
+    "flac",
+    "wav",
+    "ogg"
+};
+
+
 typedef enum {
 	F_UNDEFINED,
 	F_NORMAL,
@@ -29,4 +38,5 @@ struct dir_contents {
 void show_dir_content(struct dir_contents *contents);
 int scan_dir(struct dir_contents *contents, bool hidden, bool unsupported);
 bool is_directory(char *file);
-int count_dir_entries(char *dir_path);
+int count_dir_entries(char *dir_path, bool hidden, bool unsupported);
+bool is_supported(char *name);

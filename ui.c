@@ -102,7 +102,7 @@ init_list_for_dir(char *dir)
 	struct dir_contents *contents;
 	fileobj **list;
 
-	amount = count_dir_entries(".");
+	amount = count_dir_entries(".", false, false);
 	if (amount == 0)
 		return (-1);
 
