@@ -65,7 +65,7 @@ bool
 is_supported(char *name)
 {
 	int i, j, ext_type, len;
-	char *extp, *ext_idx = NULL;
+	char uppercase, *extp, *ext_idx = NULL;
 	const int max_ext_len = 4; // maximum file extension length
 	const char *cmp_type;
 
@@ -97,7 +97,12 @@ is_supported(char *name)
 		extp = ext_idx;
 		for (j = 0; extp[j] != '\0'; j++) {
 			if (extp[j] != cmp_type[j]) {
-				break; // check another file
+				// check upper case letter
+				uppercase = cmp_type[j];
+				uppercase = toupper(uppercase);
+				if (extp[j] != uppercase) {
+					break; // check another file
+				}
 			}
 			if (j == len - 1)
 				return (true);
