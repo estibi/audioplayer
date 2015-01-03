@@ -97,7 +97,7 @@ engine_daemon()
 	pid_t ppid;
 
 	logger("########################################\n");
-	logger("engine_daemon()\n");
+	logger("engine_daemon - START\n");
 
 	// buffer for audio filename string received from UI
 	audio_cmd_str = malloc(NAME_MAX + 1);
@@ -113,6 +113,7 @@ engine_daemon()
 		return (-1);
 	}
 
+	logger("starting network..\n");
 	sock_fd = init_network();
 	if (!sock_fd) {
 		logger("ERROR: init_network()\n");
@@ -142,32 +143,37 @@ engine_daemon()
 		return (-1);
 	}
 
+	logger("starting audio subsystem..\n");
 	ao_initialize();
 	default_driver = ao_default_driver_id();
 
+	logger("starting sender thread..\n");
 	err = pthread_create(&sender_thread, sender_attr,
 		engine_socket_sender, sender_arg);
 	if (err != 0) {
-		logger("ERROR: sender thread");
+		logger("ERROR: sender thread\n");
 		free(audio_cmd_str);
 		free(current_filename);
 		ao_shutdown();
 	}
 
+	logger("starting ao thread..\n");
 	err = pthread_create(&ao_thread, aot_attr, engine_ao, ao_arg);
 	if (err != 0) {
-		logger("ERROR: engine_ao failed");
+		logger("ERROR: engine_ao failed\n");
 		free(audio_cmd_str);
 		free(current_filename);
 		ao_shutdown();
 	}
 
+	logger("waiting for commands..\n");
 	// main loop - receiving commands from UI
 	err = engine_socket_receiver();
 
+
 	// wait for ao_thread if alive
 	if (pthread_kill(ao_thread, 0) == 0) {
-		logger("engine_daemon - waiting for ao_thread..");
+		logger("engine_daemon - waiting for ao_thread..\n");
 		pthread_join(ao_thread, NULL);
 	}
 
@@ -175,7 +181,7 @@ engine_daemon()
 	notify_packet_sender(CMD_QUIT);
 
 	if (pthread_kill(sender_thread, 0) == 0) {
-		logger("engine_daemon - waiting for sender_thread..");
+		logger("engine_daemon - waiting for sender_thread..\n");
 		pthread_join(sender_thread, NULL);
 	}
 
@@ -183,6 +189,7 @@ engine_daemon()
 	free(audio_cmd_str);
 	free(current_filename);
 
+	logger("engine_daemon - STOP\n");
 	return (err);
 }
 
@@ -641,14 +648,12 @@ init_network()
 	addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 	addr.sin_port = htons(DAEMON_PORT);
 
-	logger("socket_daemon - socket()\n");
 	sock_fd = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);
 	if (!sock_fd) {
 		logger("ERROR: socket error: %s\n", strerror(errno));
 		return (0);
 	}
 
-	logger("socket_daemon - bind()\n");
 	// use loop to avoid 'Address already in use' bind error
 	for (i = 0;; i++) {
 		err = bind(sock_fd, (struct sockaddr *)&addr, sizeof (addr));
@@ -664,7 +669,6 @@ init_network()
 		sleep(3);
 	}
 
-	logger("socket_daemon - listen()\n");
 	err = listen(sock_fd, in_queue);
 	if (err) {
 		logger("ERROR: listen error: %s\n", strerror(errno));
