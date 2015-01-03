@@ -463,14 +463,17 @@ play_file_using_native_codec()
 				pthread_mutex_unlock(&ao_event_mutex);
 			}
 
-			// check for STOP command
+			// check for STOP or PLAY commands
 			pthread_mutex_lock(&audio_cmd_mutex);
 			command = audio_cmd;
 			pthread_mutex_unlock(&audio_cmd_mutex);
 
 			if (command == CMD_STOP) {
-				logger("CMD_STOP\n");
+				logger("engine_ao - CMD_STOP\n");
 				return (EXIT_REASON_STOP);
+			} else if (command == CMD_PLAY) {
+				logger("engine_ao - CMD_PLAY\n");
+				return (EXIT_REASON_PLAY_OTHER);
 			}
 
 			// play sound
