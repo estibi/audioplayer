@@ -61,8 +61,8 @@ count_dir_entries(char *dir_path, bool hidden, bool unsupported)
 	return (amount);
 }
 
-bool
-is_supported(char *name)
+int
+get_file_type(char *filename)
 {
 	int i, j, ext_type, len;
 	char uppercase, *extp, *ext_idx = NULL;
@@ -70,21 +70,21 @@ is_supported(char *name)
 	const char *cmp_type;
 
 	// don't support bad (short) file names
-	len = strnlen(name, NAME_MAX);
+	len = strnlen(filename, NAME_MAX);
 	if (len < 3)
-		return (false);
+		return (-1);
 
 	// start from the end of file
 	for (i = len; i > 1 ; i--) {
-		if (name[i] == '.') { // this is the last '.' in the name
-			ext_idx = &name[i + 1];
+		if (filename[i] == '.') { // this is the last '.' in the name
+			ext_idx = &filename[i + 1];
 			break;
 		}
 	}
 
 	// no file extension found
 	if (ext_idx == NULL)
-		return (false);
+		return (-1);
 
 	for (ext_type = 0; ext_type < supported_files_num; ext_type++) {
 		cmp_type = supported_files[ext_type];
@@ -105,10 +105,20 @@ is_supported(char *name)
 				}
 			}
 			if (j == len - 1)
-				return (true);
+				// return index to supported_files[]
+				return (ext_type);
 		}
 	}
-	return (false);
+	return (-1);
+}
+
+bool
+is_supported(char *filename)
+{
+	if (get_file_type(filename) == -1)
+		return (false);
+	else
+		return (true);
 }
 
 int

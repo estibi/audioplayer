@@ -7,6 +7,8 @@
 #include <math.h>
 #include <sndfile.h>
 
+#include "audio_shared.h"
+#include "audio_codec_mad.h"
 #include "logger.h"
 #include "protocol.h"
 #include "utils.h"
@@ -63,15 +65,8 @@ int *buffer;
 
 static int sock_fd, conn_fd;
 
-typedef enum {
-	EXIT_REASON_UNKNOWN,
-	EXIT_REASON_ERROR,
-	EXIT_REASON_PLAY_OTHER,
-	EXIT_REASON_STOP,
-	EXIT_REASON_QUIT,
-	EXIT_REASON_EOF
-} exit_reason_t;
 
+bool use_codec;
 
 void stop_command();
 void quit_command();
@@ -318,16 +313,10 @@ notify_ui_eof()
 }
 
 int
-prepare_audio_file_and_codec()
+prepare_native_codec()
 {
 	int err;
-
-	pthread_mutex_lock(&audio_cmd_mutex);
-	strncpy(current_filename, audio_cmd_str, NAME_MAX);
-	pthread_mutex_unlock(&audio_cmd_mutex);
-
 	err = open_file_sf(current_filename);
-
 	if (err == -1) {
 		logger("ERROR: can't open audio file\n");
 		return (-1);
@@ -342,6 +331,33 @@ prepare_audio_file_and_codec()
 	}
 
 	return (0);
+}
+
+int
+prepare_audio_file_and_codec()
+{
+	int err, idx;
+
+	pthread_mutex_lock(&audio_cmd_mutex);
+	strncpy(current_filename, audio_cmd_str, NAME_MAX);
+	pthread_mutex_unlock(&audio_cmd_mutex);
+
+	// getting index for file type from supported_files[]
+	idx = get_file_type(current_filename);
+	if (idx == -1) {
+		logger("ERROR: can't get file type\n");
+		return (-1);
+	}
+
+	if (idx == 4) {
+		// use 'mad' codec for mp3
+		err = prepare_mad_codec();
+		use_codec = true;
+	} else {
+		err = prepare_native_codec();
+		use_codec = false;
+	}
+	return (err);
 }
 
 exit_reason_t
@@ -535,8 +551,13 @@ engine_ao()
 				ret = EXIT_REASON_ERROR;
 				break;
 			}
-			ret = play_file_using_native_codec();
-			cleanup_native_codec();
+			if (use_codec) {
+				ret = play_file_using_mad_codec();
+				cleanup_mad_codec();
+			} else {
+				ret = play_file_using_native_codec();
+				cleanup_native_codec();
+			}
 			break;
 		case CMD_QUIT:
 			logger("engine_ao - CMD_QUIT\n");

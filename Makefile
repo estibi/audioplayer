@@ -9,7 +9,8 @@ LDFLAGS = \
 	-lao \
 	-lsndfile \
 	-lpthread \
-	-lncurses
+	-lncurses \
+	-lmad
 
 audioplayer:
 	gcc $(CFLAGS) $(LDFLAGS) \
