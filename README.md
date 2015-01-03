@@ -7,9 +7,11 @@ a work in progress
 ------------------------------------------------------------
 OSX notes
 
-$ sudo pkgin -y install libao libao-macosx libsndfile
+$ sudo pkgin -y install libao libao-macosx libsndfile libmad
 
 $ make
+
+./audioplayer
 
 ------------------------------------------------------------
 illumos notes:
