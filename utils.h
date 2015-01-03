@@ -12,10 +12,10 @@
 
 static const int supported_files_num = 4;
 static const char *supported_files[] = {
-    "aiff",
-    "flac",
-    "wav",
-    "ogg"
+	"aiff",
+	"flac",
+	"wav",
+	"ogg"
 };
 
 

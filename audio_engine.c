@@ -531,7 +531,10 @@ engine_ao()
 		switch (command) {
 		case CMD_PLAY:
 			logger("engine_ao - CMD_PLAY\n");
-			prepare_audio_file_and_codec();
+			if (prepare_audio_file_and_codec() == -1) {
+				ret = EXIT_REASON_ERROR;
+				break;
+			}
 			ret = play_file_using_native_codec();
 			cleanup_native_codec();
 			break;
