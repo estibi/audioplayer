@@ -1,9 +1,3 @@
-#include <pthread.h>
-#include <signal.h>
-#include <stdbool.h>
-#include <sys/types.h>
-
-#include <ao/ao.h>
 #include <math.h>
 #include <sndfile.h>
 
@@ -26,10 +20,10 @@ SF_INFO sfinfo;
 int mode = SFM_READ;
 
 // libao settings
-static ao_device *device;
+ao_device *device;
 ao_sample_format format;
-int default_driver;
 
+int default_driver;
 
 // audio engine thread
 pthread_t ao_thread = NULL;
@@ -44,7 +38,8 @@ void *sender_arg = NULL;
 // cached of current audio file name
 char *current_filename = NULL;
 
-static info_t audio_cmd;
+
+info_t audio_cmd;
 char *audio_cmd_str;
 pthread_mutex_t audio_cmd_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -254,7 +249,7 @@ exit_sndfile()
 	sf_close(sndfile);
 }
 
-void
+static void
 set_audio_format()
 {
 	memset(&format, 0, sizeof (format));
@@ -352,6 +347,10 @@ prepare_audio_file_and_codec()
 	if (idx == 4) {
 		// use 'mad' codec for mp3
 		err = prepare_mad_codec();
+		if (err == -1) {
+			logger("ERROR: can't prepare mad codec\n");
+			return (-1);
+		}
 		use_codec = true;
 	} else {
 		err = prepare_native_codec();

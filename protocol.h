@@ -6,6 +6,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#ifndef PROTOCOL_H
+#define PROTOCOL_H
+
 #define	DAEMON_PORT 10000
 
 typedef enum {
@@ -30,3 +33,5 @@ struct pkt_header {
 };
 
 int send_packet(int fd, info_t info, char *s);
+
+#endif
