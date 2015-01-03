@@ -16,7 +16,7 @@ OSX notes
 ------------------------------------------------------------
 illumos notes:
 
-    $ sudo pkgin -y install libao libao-oss libao-sun libsndfile ncurses
+    $ sudo pkgin -y install libao libao-oss libao-sun libsndfile ncurses libmad
 
     $ gcc -Wall -m64 \
         -I/opt/local/include -I/usr/include/ncurses \
