@@ -68,6 +68,7 @@ typedef enum {
 	EXIT_REASON_ERROR,
 	EXIT_REASON_PLAY_OTHER,
 	EXIT_REASON_STOP,
+	EXIT_REASON_QUIT,
 	EXIT_REASON_EOF
 } exit_reason_t;
 
@@ -78,12 +79,17 @@ int engine_socket_receiver();
 int signal_cond_event();
 int get_connection_fd();
 int init_network();
+void notify_packet_sender(info_t status);
+
 void cleanup_native_codec();
 
 void *engine_socket_sender();
 void *engine_ao();
 
 
+/*
+ * Entry point of audio daemon.
+ */
 int
 engine_daemon()
 {
@@ -103,12 +109,15 @@ engine_daemon()
 	current_filename = malloc(NAME_MAX + 1);
 	if (!current_filename) {
 		logger("ERROR: Can't initialize current_filename.");
+		free(audio_cmd_str);
 		return (-1);
 	}
 
 	sock_fd = init_network();
 	if (!sock_fd) {
 		logger("ERROR: init_network()\n");
+		free(audio_cmd_str);
+		free(current_filename);
 		return (-1);
 	}
 
@@ -119,7 +128,8 @@ engine_daemon()
 	err = kill(ppid, SIGUSR1);
 	if (err == -1) {
 		logger("ERROR: can't send SIGUSR1 to the parent\n");
-		// TODO
+		free(audio_cmd_str);
+		free(current_filename);
 		ao_shutdown();
 		return (err);
 	}
@@ -127,6 +137,8 @@ engine_daemon()
 	conn_fd = get_connection_fd();
 	if (conn_fd == -1) {
 		logger("ERROR: get_connection_fd()\n");
+		free(audio_cmd_str);
+		free(current_filename);
 		return (-1);
 	}
 
@@ -137,14 +149,35 @@ engine_daemon()
 		engine_socket_sender, sender_arg);
 	if (err != 0) {
 		logger("ERROR: sender thread");
+		free(audio_cmd_str);
+		free(current_filename);
+		ao_shutdown();
 	}
 
 	err = pthread_create(&ao_thread, aot_attr, engine_ao, ao_arg);
 	if (err != 0) {
 		logger("ERROR: engine_ao failed");
+		free(audio_cmd_str);
+		free(current_filename);
+		ao_shutdown();
 	}
 
+	// main loop - receiving commands from UI
 	err = engine_socket_receiver();
+
+	// wait for ao_thread if alive
+	if (pthread_kill(ao_thread, 0) == 0) {
+		logger("engine_daemon - waiting for ao_thread..");
+		pthread_join(ao_thread, NULL);
+	}
+
+	// finishing sender_thread
+	notify_packet_sender(CMD_QUIT);
+
+	if (pthread_kill(sender_thread, 0) == 0) {
+		logger("engine_daemon - waiting for sender_thread..");
+		pthread_join(sender_thread, NULL);
+	}
 
 	ao_shutdown();
 	free(audio_cmd_str);
@@ -170,10 +203,13 @@ engine_socket_sender()
 		}
 		pthread_mutex_unlock(&status_event_mutex);
 
-		// read status variable
+		// reading status variable
 		pthread_mutex_lock(&audio_status_mutex);
 		status_copy = audio_status;
 		pthread_mutex_unlock(&audio_status_mutex);
+
+		if (status_copy == CMD_QUIT)
+			pthread_exit(NULL);
 
 		// send audio status to UI
 		err = send_packet(conn_fd, status_copy, NULL);
@@ -250,13 +286,13 @@ open_audio_device()
 }
 
 void
-notify_ui_eof()
+notify_packet_sender(info_t status)
 {
 	int ret;
 
-	// set STATUS_STOP for packet sender
+	// set for packet sender
 	pthread_mutex_lock(&audio_status_mutex);
-	audio_status = STATUS_STOP;
+	audio_status = status;
 	pthread_mutex_unlock(&audio_status_mutex);
 
 	// send event signal to packet sender
@@ -266,6 +302,12 @@ notify_ui_eof()
 		logger("ERROR: pthread_cond_signal: %d\n", ret);
 	}
 	pthread_mutex_unlock(&status_event_mutex);
+}
+
+void
+notify_ui_eof()
+{
+	notify_packet_sender(STATUS_STOP);
 }
 
 int
@@ -363,6 +405,9 @@ play_file_using_native_codec()
 			case CMD_STOP:
 				logger("engine_ao - CMD_STOP\n");
 				return (EXIT_REASON_STOP);
+			case CMD_QUIT:
+				logger("engine_ao - CMD_QUIT\n");
+				return (EXIT_REASON_QUIT);
 			case CMD_PAUSE:
 				logger("engine_ao - CMD_PAUSE\n");
 				paused = true;
@@ -386,6 +431,8 @@ play_file_using_native_codec()
 				logger("seek_ret: %lld\n", seek_ret);
 				audio_cmd = STATUS_PLAY;
 				shifted = true;
+				break;
+			case STATUS_PLAY:
 				break;
 			default:
 				logger("engine_ao - TODO: %d\n", command);
@@ -505,6 +552,18 @@ stop_command()
 {
 	pthread_mutex_lock(&audio_cmd_mutex);
 	audio_cmd = CMD_STOP;
+	pthread_mutex_unlock(&audio_cmd_mutex);
+
+	if (signal_cond_event() != 0) {
+		logger("ERROR: STOP COMMAND FAILED\n");
+	}
+}
+
+void
+quit_command()
+{
+	pthread_mutex_lock(&audio_cmd_mutex);
+	audio_cmd = CMD_QUIT;
 	pthread_mutex_unlock(&audio_cmd_mutex);
 
 	if (signal_cond_event() != 0) {
@@ -703,7 +762,7 @@ engine_socket_receiver()
 			break;
 		case CMD_QUIT:
 			logger("socket_daemon received CMD_QUIT\n");
-			stop_command();
+			quit_command();
 			close(conn_fd);
 			close(sock_fd);
 			if (pthread_kill(ao_thread, 0) == 0) {

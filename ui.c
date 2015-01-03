@@ -488,6 +488,10 @@ ui_socket_receiver()
 		case STATUS_STOP:
 			received_status_stop();
 			break;
+		case STATUS_EXIT:
+			if (has_content)
+				free(str_buf);
+			return (NULL);
 		default:
 			;;
 		}
@@ -497,15 +501,14 @@ ui_socket_receiver()
 		}
 	}
 	refresh();
-	// TODO
 	// we are here if error occurred
 	if (has_content) {
 		free(str_buf);
 		has_content = false;
 	}
-	for (;;) {
-		sleep(120);
-	}
+	printw("ui_socket_receiver ERROR, exiting thread..\n");
+	refresh();
+	return (NULL);
 }
 
 void
@@ -832,6 +835,13 @@ curses_ui()
 
 	show_files(main_win);
 	curses_loop();
+
+	// wait for receiver_thread if alive
+	if (pthread_kill(receiver_thread, 0) == 0) {
+		printw("UI: waiting for receiver_thread..");
+		refresh();
+		pthread_join(receiver_thread, NULL);
+	}
 
 	free_dir_list();
 	free(file_list.dir_name);
