@@ -7,8 +7,9 @@
 #include <math.h>
 #include <sndfile.h>
 
-#include "protocol.h"
 #include "logger.h"
+#include "protocol.h"
+#include "utils.h"
 
 /*
  * API:
@@ -38,8 +39,11 @@ pthread_t sender_thread = NULL;
 pthread_attr_t *sender_attr = NULL;
 void *sender_arg = NULL;
 
+// cached of current audio file name
+char *current_filename = NULL;
 
-volatile info_t audio_cmd;
+static info_t audio_cmd;
+char *audio_cmd_str;
 pthread_mutex_t audio_cmd_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // for event notifications
@@ -59,13 +63,26 @@ int *buffer;
 
 static int sock_fd, conn_fd;
 
+typedef enum {
+	EXIT_REASON_UNKNOWN,
+	EXIT_REASON_ERROR,
+	EXIT_REASON_PLAY_OTHER,
+	EXIT_REASON_STOP,
+	EXIT_REASON_EOF
+} exit_reason_t;
+
+
 void stop_command();
 void quit_command();
 int engine_socket_receiver();
 int signal_cond_event();
 int get_connection_fd();
 int init_network();
+void cleanup_native_codec();
+
 void *engine_socket_sender();
+void *engine_ao();
+
 
 int
 engine_daemon()
@@ -75,6 +92,19 @@ engine_daemon()
 
 	logger("########################################\n");
 	logger("engine_daemon()\n");
+
+	// buffer for audio filename string received from UI
+	audio_cmd_str = malloc(NAME_MAX + 1);
+	if (audio_cmd_str == NULL) {
+		logger("ERROR: can't alloc memory for audio_cmd_str\n");
+		return (-1);
+	}
+
+	current_filename = malloc(NAME_MAX + 1);
+	if (!current_filename) {
+		logger("ERROR: Can't initialize current_filename.");
+		return (-1);
+	}
 
 	sock_fd = init_network();
 	if (!sock_fd) {
@@ -109,8 +139,16 @@ engine_daemon()
 		logger("ERROR: sender thread");
 	}
 
+	err = pthread_create(&ao_thread, aot_attr, engine_ao, ao_arg);
+	if (err != 0) {
+		logger("ERROR: engine_ao failed");
+	}
+
 	err = engine_socket_receiver();
+
 	ao_shutdown();
+	free(audio_cmd_str);
+	free(current_filename);
 
 	return (err);
 }
@@ -157,7 +195,7 @@ show_sf_info(SF_INFO * sfinfo)
 }
 
 void
-cancel_routine(void *arg)
+cleanup_native_codec()
 {
 	logger("CLEANING UP: ao_close()\n");
 	ao_close(device);
@@ -167,9 +205,6 @@ cancel_routine(void *arg)
 
 	logger("CLEANING UP: free()\n");
 	free(buffer);
-
-	logger("CLEANING UP: mutex()\n");
-	pthread_mutex_unlock(&audio_cmd_mutex);
 
 	logger("CLEANING UP - DONE\n");
 }
@@ -233,11 +268,35 @@ notify_ui_eof()
 	pthread_mutex_unlock(&status_event_mutex);
 }
 
-/*
- * This is an audio I/O thread.
- */
-void *
-ao_play_file()
+int
+prepare_audio_file_and_codec()
+{
+	int err;
+
+	pthread_mutex_lock(&audio_cmd_mutex);
+	strncpy(current_filename, audio_cmd_str, NAME_MAX);
+	pthread_mutex_unlock(&audio_cmd_mutex);
+
+	err = open_file_sf(current_filename);
+
+	if (err == -1) {
+		logger("ERROR: can't open audio file\n");
+		return (-1);
+	}
+
+	set_audio_format();
+
+	if (open_audio_device() == -1) {
+		logger("ERROR: can't open audio device\n");
+		sf_close(sndfile);
+		return (-1);
+	}
+
+	return (0);
+}
+
+exit_reason_t
+play_file_using_native_codec()
 {
 	int buf_len, buf_size;
 	static bool paused = false, shifted = false;
@@ -247,8 +306,7 @@ ao_play_file()
 	int i, play_chunk;
 	char *bufp = NULL;
 	sf_count_t count, seek_ret, seek_frames;
-
-	pthread_cleanup_push(cancel_routine, NULL);
+	info_t command;
 
 	// buf_len = format.bits/8 * format.channels * format.rate / 4;
 	buf_len = format.bits/8 * format.channels * format.rate;
@@ -259,7 +317,7 @@ ao_play_file()
 	buffer = malloc(buf_size);
 	if (buffer == NULL) {
 		logger("buffer error: %s\n", strerror(errno));
-		pthread_exit(NULL);
+		return (EXIT_REASON_ERROR);
 	}
 
 	// reading a file
@@ -271,8 +329,9 @@ ao_play_file()
 			// end of file
 			notify_ui_eof();
 			pthread_mutex_lock(&audio_cmd_mutex);
-			audio_cmd = CMD_STOP;
-			pthread_exit(NULL);
+			audio_cmd = STATUS_STOP;
+			pthread_mutex_unlock(&audio_cmd_mutex);
+			return (EXIT_REASON_EOF);
 		}
 		if (count < buf_len) {
 			if (count <= play_chunk) {
@@ -280,10 +339,10 @@ ao_play_file()
 				ao_play(device, (char *)buffer, count);
 				notify_ui_eof();
 
-				// exit this thread
 				pthread_mutex_lock(&audio_cmd_mutex);
-				audio_cmd = CMD_STOP;
-				pthread_exit(NULL);
+				audio_cmd = STATUS_STOP;
+				pthread_mutex_unlock(&audio_cmd_mutex);
+				return (EXIT_REASON_EOF);
 			}
 			last_read = true;
 		}
@@ -293,40 +352,47 @@ ao_play_file()
 		for (i = 0; i < 16; i++) {
 			// checking for the command
 			pthread_mutex_lock(&audio_cmd_mutex);
-			switch (audio_cmd) {
+			command = audio_cmd;
+			pthread_mutex_unlock(&audio_cmd_mutex);
+
+			switch (command) {
+			case CMD_PLAY:
+				logger("engine_ao - CMD_PLAY\n");
+				return (EXIT_REASON_PLAY_OTHER);
+				break;
 			case CMD_STOP:
-				logger("ao_play_file - CMD_STOP\n");
-				pthread_exit(NULL);
+				logger("engine_ao - CMD_STOP\n");
+				return (EXIT_REASON_STOP);
 			case CMD_PAUSE:
-				logger("ao_play_file - CMD_PAUSE\n");
+				logger("engine_ao - CMD_PAUSE\n");
 				paused = true;
 				break;
 			case CMD_FF:
-				logger("ao_play_file - CMD_FF\n");
+				logger("engine_ao - CMD_FF\n");
 				seek_ret = sf_seek(sndfile, seek_frames, SEEK_CUR);
 				logger("seek_ret: %lld\n", seek_ret);
 				if (seek_ret == -1)
 					sf_seek(sndfile, 0, SEEK_END);
 				shifted = true;
-				audio_cmd = CMD_PLAY;
+				audio_cmd = STATUS_PLAY;
 				break;
 			case CMD_REV:
-				logger("ao_play_file - CMD_REV\n");
+				logger("engine_ao - CMD_REV\n");
 				seek_ret = sf_seek(sndfile, 0, SEEK_CUR);
 				if (seek_ret <= seek_frames)
 					seek_ret = sf_seek(sndfile, 0, SEEK_SET);
 				else
 					seek_ret = sf_seek(sndfile, -seek_frames, SEEK_CUR);
 				logger("seek_ret: %lld\n", seek_ret);
-				audio_cmd = CMD_PLAY;
+				audio_cmd = STATUS_PLAY;
 				shifted = true;
 				break;
 			default:
+				logger("engine_ao - TODO: %d\n", command);
 				;;
 			}
-			pthread_mutex_unlock(&audio_cmd_mutex);
 
-			// CMD_FF, CMD_REV
+			// CMD_FF, CMD_REV, CMD_PLAY (replay)
 			if (shifted) {
 				shifted = false;
 				break;
@@ -343,13 +409,15 @@ ao_play_file()
 				pthread_mutex_unlock(&ao_event_mutex);
 			}
 
-			// check if STOP command was sent
+			// check for STOP command
 			pthread_mutex_lock(&audio_cmd_mutex);
-			if (audio_cmd == CMD_STOP) {
-				logger("CMD_STOP\n");
-				pthread_exit(NULL);
-			}
+			command = audio_cmd;
 			pthread_mutex_unlock(&audio_cmd_mutex);
+
+			if (command == CMD_STOP) {
+				logger("CMD_STOP\n");
+				return (EXIT_REASON_STOP);
+			}
 
 			// play sound
 			ao_play(device, bufp, play_chunk);
@@ -367,42 +435,68 @@ ao_play_file()
 		}
 		read_cnt++;
 	}
+	return (EXIT_REASON_EOF);
+}
 
-	pthread_cleanup_pop(1);
-	pthread_exit(NULL);
+/*
+ * This is an audio I/O thread.
+ */
+void *
+engine_ao()
+{
+	unsigned int command;
+	exit_reason_t ret = EXIT_REASON_UNKNOWN;
+
+	for (;;) {
+		switch (ret) {
+		case (EXIT_REASON_UNKNOWN):
+		case (EXIT_REASON_ERROR):
+		case (EXIT_REASON_STOP):
+		case (EXIT_REASON_EOF):
+			// waiting for new event
+			pthread_mutex_lock(&ao_event_mutex);
+			if (pthread_cond_wait(&ao_event, &ao_event_mutex) != 0) {
+				logger("ERROR: pthread_cond_wait failed\n");
+				// TODO
+			}
+			pthread_mutex_unlock(&ao_event_mutex);
+			break;
+		default:
+			;;
+		}
+
+		pthread_mutex_lock(&audio_cmd_mutex);
+		command = audio_cmd;
+		if (command == CMD_PLAY)
+			audio_cmd = STATUS_PLAY;
+		pthread_mutex_unlock(&audio_cmd_mutex);
+
+		switch (command) {
+		case CMD_PLAY:
+			logger("engine_ao - CMD_PLAY\n");
+			prepare_audio_file_and_codec();
+			ret = play_file_using_native_codec();
+			cleanup_native_codec();
+			break;
+		case CMD_QUIT:
+			logger("engine_ao - CMD_QUIT\n");
+			pthread_exit(NULL);
+		default:
+			;;
+		}
+	}
 }
 
 void
-play_file(char *str_buf)
+play_command(char *filename)
 {
-	// quit current thread if alive
-	if (pthread_kill(ao_thread, 0) == 0) {
-		stop_command();
-	}
-
-	// wait for current thread to exit
-	pthread_join(ao_thread, NULL);
-
-	// reset 'stop' command
 	pthread_mutex_lock(&audio_cmd_mutex);
 	audio_cmd = CMD_PLAY;
+	snprintf(audio_cmd_str, NAME_MAX, "%s", filename);
 	pthread_mutex_unlock(&audio_cmd_mutex);
 
-	if (open_file_sf(str_buf) == -1) {
-		logger("ERROR: can't open audio file %s\n", str_buf);
-		return;
-	}
-
-	set_audio_format();
-
-	if (open_audio_device() == -1) {
-		logger("ERROR: can't open audio device\n");
-		sf_close(sndfile);
-		return;
-	}
-
-	if (pthread_create(&ao_thread, aot_attr, ao_play_file, ao_arg) != 0) {
-		logger("pthread_create error\n");
+	if (signal_cond_event() != 0) {
+		logger("ERROR: PLAY COMMAND FAILED\n");
 	}
 }
 
@@ -462,10 +556,10 @@ void
 pause_command()
 {
 	pthread_mutex_lock(&audio_cmd_mutex);
-	if (audio_cmd == CMD_PLAY) {
+	if (audio_cmd == CMD_PLAY || audio_cmd == STATUS_PLAY) {
 		audio_cmd = CMD_PAUSE;
 	} else if (audio_cmd == CMD_PAUSE) {
-		audio_cmd = CMD_PLAY;
+		audio_cmd = STATUS_PLAY;
 		pthread_mutex_lock(&ao_event_mutex);
 		int ret = pthread_cond_signal(&ao_event);
 		if (ret != 0) {
@@ -597,7 +691,7 @@ engine_socket_receiver()
 		switch (host_pkt_hdr.info) {
 		case CMD_PLAY:
 			logger("socket_daemon received CMD_PLAY\n");
-			play_file(str_buf);
+			play_command(str_buf);
 			break;
 		case CMD_PAUSE:
 			logger("socket_daemon received CMD_PAUSE\n");

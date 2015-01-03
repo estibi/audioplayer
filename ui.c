@@ -117,7 +117,7 @@ init_list_for_dir(char *dir)
 	}
 
 	for (i = 0; i < amount; i++) {
-		list[i] = malloc(NAME_MAX);
+		list[i] = malloc(NAME_MAX + 1);
 		if (!list[i]) {
 			return (-1);
 		}
@@ -179,24 +179,24 @@ key_enter()
 {
 	info_t cmd = CMD_PLAY;
 	struct dir_contents *contents;
-	char *ptr, *buf;
+	char *name, *buf;
 	unsigned int buf_size;
 
 	contents = file_list.contents;
 
-	// file of directory name
-	ptr = (char *)&contents->list[file_list.cur_idx]->name;
+	// file or directory name
+	name = (char *)&contents->list[file_list.cur_idx]->name;
 
-	if (is_directory(ptr)) {
+	if (is_directory(name)) {
 		mvwprintw(status_win, 1, 5, "CHDIR  ");
 
-		buf_size = strlen(ptr) + 1;
+		buf_size = strlen(name) + 1;
 		buf = malloc(buf_size);
 		if (!buf) {
 			mvwprintw(status_win, 3, 5, "MALLOC ERROR");
 			return (-1);
 		}
-		strncpy(buf, ptr, strlen(ptr));
+		strncpy(buf, name, strlen(name));
 		buf[buf_size - 1] = '\0';
 		if (change_directory(buf) == -1) {
 			mvwprintw(status_win, 3, 5, "ERROR: %s", buf);
@@ -212,7 +212,7 @@ key_enter()
 	ui_status_cache = CMD_PLAY;
 	pthread_mutex_unlock(&ui_status_cache_mutex);
 
-	return (send_packet(sock_fd, cmd, ptr));
+	return (send_packet(sock_fd, cmd, name));
 }
 
 
