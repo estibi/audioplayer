@@ -179,32 +179,48 @@ key_enter()
 {
 	info_t cmd = CMD_PLAY;
 	struct dir_contents *contents;
-	char *name, *buf;
+	char *name, *buf, *p;
 	unsigned int buf_size;
+	int ret = 0;
+	bool is_dir;
 
 	contents = file_list.contents;
 
 	// file or directory name
 	name = (char *)&contents->list[file_list.cur_idx]->name;
 
-	if (is_directory(name)) {
-		mvwprintw(status_win, 1, 5, "CHDIR  ");
+	is_dir = is_directory(name);
 
+	if (is_dir)
 		buf_size = strlen(name) + 1;
-		buf = malloc(buf_size);
-		if (!buf) {
-			mvwprintw(status_win, 3, 5, "MALLOC ERROR");
-			return (-1);
-		}
+	else
+		buf_size = strlen(file_list.dir_name) + 1 + strlen(name) + 1;
+
+	buf = malloc(buf_size);
+	if (!buf) {
+		mvwprintw(status_win, 3, 5, "MALLOC ERROR");
+		return (-1);
+	}
+
+	if (is_dir) {
+		mvwprintw(status_win, 1, 5, "CHDIR  ");
 		strncpy(buf, name, strlen(name));
 		buf[buf_size - 1] = '\0';
 		if (change_directory(buf) == -1) {
 			mvwprintw(status_win, 3, 5, "ERROR: %s", buf);
-			free(buf);
-			return (-1);
+			ret = -1;
 		}
 		free(buf);
-		return (0);
+		return (ret);
+	} else {
+		// creating a full path for selected file
+		p = buf;
+		strncpy(p, file_list.dir_name, strlen(file_list.dir_name));
+		p += strlen(file_list.dir_name);
+		*p++ = '/';
+		strncpy(p, name, strlen(name));
+		p += strlen(name);
+		*p = '\0';
 	}
 
 	mvwprintw(status_win, 1, 5, "CMD: PLAY ");
@@ -212,7 +228,11 @@ key_enter()
 	ui_status_cache = CMD_PLAY;
 	pthread_mutex_unlock(&ui_status_cache_mutex);
 
-	return (send_packet(sock_fd, cmd, name));
+	// send full path
+	ret = send_packet(sock_fd, cmd, buf);
+	free(buf);
+
+	return (ret);
 }
 
 

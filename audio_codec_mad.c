@@ -37,11 +37,13 @@ prepare_mad_codec()
 	fd = open(current_filename, O_RDONLY);
 	if (fd == -1) {
 		logger("ERROR: can't open audio file\n");
+		logger("%s\n", strerror(errno));
 		return (-1);
 	}
 
 	if (fstat(fd, &file_stat) == -1) {
 		logger("ERROR: fstat\n");
+		logger("%s\n", strerror(errno));
 		close(fd);
 		return (-1);
 	}
@@ -55,6 +57,7 @@ prepare_mad_codec()
 	fdm = mmap(0, file_stat.st_size, PROT_READ, MAP_SHARED, fd, 0);
 	if (fdm == MAP_FAILED) {
 		logger("ERROR: mmap\n");
+		logger("%s\n", strerror(errno));
 		close(fd);
 		return (-1);
 	}
@@ -87,6 +90,7 @@ play_file_using_mad_codec()
 	unsigned int buf_len;
 	struct buffer mad_buffer;
 	struct mad_decoder decoder;
+	info_t status;
 
 	buf_len = format.bits/8 * format.channels * format.rate * 2;
 	buf = malloc(buf_len * sizeof (int));
@@ -100,6 +104,19 @@ play_file_using_mad_codec()
 		in_func, 0, 0, out_func, err_func, 0);
 
 	err = mad_decoder_run(&decoder, MAD_DECODER_MODE_SYNC);
+	logger("play_file: mad_decoder_run() returned %d\n", err);
+
+	// TODO: check status
+	pthread_mutex_lock(&audio_cmd_mutex);
+	status = audio_cmd;
+	pthread_mutex_unlock(&audio_cmd_mutex);
+	switch (status) {
+	case EXIT_REASON_STOP:
+		logger("status: EXIT_REASON_STOP\n");
+		break;
+	default:
+		logger("status: %d\n", status);
+	}
 
 	mad_decoder_finish(&decoder);
 	free(buf);
@@ -137,6 +154,7 @@ set_audio_format_mad()
 		in_func, hdr_func, 0, out_func, err_func, 0);
 
 	err = mad_decoder_run(&decoder, MAD_DECODER_MODE_SYNC);
+	logger("header: mad_decoder_run() returned %d\n", err);
 
 	mad_decoder_finish(&decoder);
 	return (0);
@@ -219,13 +237,22 @@ out_func(void *data, struct mad_header const *header, struct mad_pcm *pcm)
 	switch (command) {
 	case CMD_PLAY:
 		logger("engine_ao - CMD_PLAY\n");
+		pthread_mutex_lock(&audio_cmd_mutex);
+		audio_cmd = STATUS_STOP;
+		pthread_mutex_unlock(&audio_cmd_mutex);
 		return (MAD_FLOW_STOP);
 		break;
 	case CMD_STOP:
 		logger("engine_ao - CMD_STOP\n");
+		pthread_mutex_lock(&audio_cmd_mutex);
+		audio_cmd = STATUS_STOP;
+		pthread_mutex_unlock(&audio_cmd_mutex);
 		return (MAD_FLOW_STOP);
 	case CMD_QUIT:
 		logger("engine_ao - CMD_QUIT\n");
+		pthread_mutex_lock(&audio_cmd_mutex);
+		audio_cmd = STATUS_EXIT;
+		pthread_mutex_unlock(&audio_cmd_mutex);
 		return (MAD_FLOW_STOP);
 	case CMD_PAUSE: // TODO
 		//paused = true;
