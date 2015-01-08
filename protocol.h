@@ -1,3 +1,6 @@
+#ifndef PROTOCOL_H
+#define PROTOCOL_H
+
 #include <errno.h>
 #include <netinet/in.h>
 #include <stdio.h>
@@ -6,8 +9,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#ifndef PROTOCOL_H
-#define PROTOCOL_H
 
 #define	DAEMON_PORT 10000
 

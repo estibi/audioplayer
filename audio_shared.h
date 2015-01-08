@@ -1,3 +1,6 @@
+#ifndef AUDIO_SHARED_H
+#define AUDIO_SHARED_H
+
 #include <ao/ao.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -9,9 +12,6 @@
 #include <unistd.h>
 
 #include "protocol.h"
-
-#ifndef AUDIO_SHARED_H
-#define AUDIO_SHARED_H
 
 typedef enum {
 	EXIT_REASON_UNKNOWN,
