@@ -240,6 +240,10 @@ out_func(void *data, struct mad_header const *header, struct mad_pcm *pcm)
 		pthread_mutex_lock(&audio_cmd_mutex);
 		audio_cmd = STATUS_STOP;
 		pthread_mutex_unlock(&audio_cmd_mutex);
+		// TODO: use codec_status only
+		pthread_mutex_lock(&codec_status_mutex);
+		codec_status = CODEC_STATUS_EXIT_PLAY_OTHER;
+		pthread_mutex_unlock(&codec_status_mutex);
 		return (MAD_FLOW_STOP);
 		break;
 	case CMD_STOP:
@@ -261,7 +265,7 @@ out_func(void *data, struct mad_header const *header, struct mad_pcm *pcm)
 		break;
 	case CMD_REV: // TODO
 		break;
-	case STATUS_PLAY:
+	case STATUS_ACK:
 		break;
 	default:
 		logger("engine_ao - TODO: %d\n", command);

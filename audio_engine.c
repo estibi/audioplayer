@@ -39,21 +39,34 @@ void *sender_arg = NULL;
 char *current_filename = NULL;
 
 
-info_t audio_cmd;
-char *audio_cmd_str;
+/*
+ *
+ */
 pthread_mutex_t audio_cmd_mutex = PTHREAD_MUTEX_INITIALIZER;
+char *audio_cmd_str;
+info_t audio_cmd;
 
-// for event notifications
+// for event notifications (pause/unpause/play/exit..)
 pthread_mutex_t ao_event_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t ao_event = PTHREAD_COND_INITIALIZER;
 
 
-volatile info_t audio_status;
-pthread_mutex_t audio_status_mutex = PTHREAD_MUTEX_INITIALIZER;
+/*
+ * Used by engine_socket_sender to notify UI.
+ */
+pthread_mutex_t audio_status_for_ui_mutex = PTHREAD_MUTEX_INITIALIZER;
+volatile info_t audio_status_for_ui;
 
-// for event notifications
-pthread_mutex_t status_event_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t status_event = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t status_event_for_ui_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t status_event_for_ui = PTHREAD_COND_INITIALIZER;
+
+
+/*
+ * TODO
+ */
+pthread_mutex_t codec_status_mutex = PTHREAD_MUTEX_INITIALIZER;
+codec_status_t codec_status;
+
 
 // used by audio thread
 int *buffer;
@@ -193,17 +206,18 @@ engine_socket_sender()
 	info_t status_copy;
 
 	for (;;) {
-		pthread_mutex_lock(&status_event_mutex);
+		pthread_mutex_lock(&status_event_for_ui_mutex);
 		// waiting for an event
-		if (pthread_cond_wait(&status_event, &status_event_mutex) != 0) {
+		if (pthread_cond_wait(&status_event_for_ui,
+				&status_event_for_ui_mutex) != 0) {
 			logger("ERROR: pthread_cond_wait in engine_socket_sender()\n");
 		}
-		pthread_mutex_unlock(&status_event_mutex);
+		pthread_mutex_unlock(&status_event_for_ui_mutex);
 
 		// reading status variable
-		pthread_mutex_lock(&audio_status_mutex);
-		status_copy = audio_status;
-		pthread_mutex_unlock(&audio_status_mutex);
+		pthread_mutex_lock(&audio_status_for_ui_mutex);
+		status_copy = audio_status_for_ui;
+		pthread_mutex_unlock(&audio_status_for_ui_mutex);
 
 		if (status_copy == CMD_QUIT)
 			pthread_exit(NULL);
@@ -288,17 +302,17 @@ notify_packet_sender(info_t status)
 	int ret;
 
 	// set for packet sender
-	pthread_mutex_lock(&audio_status_mutex);
-	audio_status = status;
-	pthread_mutex_unlock(&audio_status_mutex);
+	pthread_mutex_lock(&audio_status_for_ui_mutex);
+	audio_status_for_ui = status;
+	pthread_mutex_unlock(&audio_status_for_ui_mutex);
 
 	// send event signal to packet sender
-	pthread_mutex_lock(&status_event_mutex);
-	ret = pthread_cond_signal(&status_event);
+	pthread_mutex_lock(&status_event_for_ui_mutex);
+	ret = pthread_cond_signal(&status_event_for_ui);
 	if (ret != 0) {
 		logger("ERROR: pthread_cond_signal: %d\n", ret);
 	}
-	pthread_mutex_unlock(&status_event_mutex);
+	pthread_mutex_unlock(&status_event_for_ui_mutex);
 }
 
 void
@@ -441,7 +455,7 @@ play_file_using_native_codec()
 				if (seek_ret == -1)
 					sf_seek(sndfile, 0, SEEK_END);
 				shifted = true;
-				audio_cmd = STATUS_PLAY;
+				audio_cmd = STATUS_ACK;
 				break;
 			case CMD_REV:
 				logger("engine_ao - CMD_REV\n");
@@ -451,10 +465,10 @@ play_file_using_native_codec()
 				else
 					seek_ret = sf_seek(sndfile, -seek_frames, SEEK_CUR);
 				logger("seek_ret: %lld\n", seek_ret);
-				audio_cmd = STATUS_PLAY;
+				audio_cmd = STATUS_ACK;
 				shifted = true;
 				break;
-			case STATUS_PLAY:
+			case STATUS_ACK:
 				break;
 			default:
 				logger("engine_ao - TODO: %d\n", command);
@@ -540,7 +554,7 @@ engine_ao()
 		pthread_mutex_lock(&audio_cmd_mutex);
 		command = audio_cmd;
 		if (command == CMD_PLAY)
-			audio_cmd = STATUS_PLAY;
+			audio_cmd = STATUS_ACK;
 		pthread_mutex_unlock(&audio_cmd_mutex);
 
 		switch (command) {
@@ -648,10 +662,10 @@ void
 pause_command()
 {
 	pthread_mutex_lock(&audio_cmd_mutex);
-	if (audio_cmd == CMD_PLAY || audio_cmd == STATUS_PLAY) {
+	if (audio_cmd == CMD_PLAY || audio_cmd == STATUS_ACK) {
 		audio_cmd = CMD_PAUSE;
 	} else if (audio_cmd == CMD_PAUSE) {
-		audio_cmd = STATUS_PLAY;
+		audio_cmd = STATUS_ACK;
 		pthread_mutex_lock(&ao_event_mutex);
 		int ret = pthread_cond_signal(&ao_event);
 		if (ret != 0) {
