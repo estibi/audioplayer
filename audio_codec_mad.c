@@ -8,6 +8,10 @@
 // TODO: remove logger from codecs
 #include "logger.h"
 
+/*
+ * libmad API: http://www.underbit.com/products/mad/
+ */
+
 static void *fdm;
 static struct stat file_stat;
 
